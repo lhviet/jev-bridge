@@ -227,11 +227,14 @@ the write behind a live call from about 470 µs to 400 µs.
 ```text
 ~/.jev-bridge/          created 0700 on first use
 ├── .env                your API key, if you keep it in a file (0600)
-└── jev.db              the five tables above
+└── jev.db              the five tables above (0600)
 ```
 
 While the database is open, SQLite keeps `jev.db-wal` and `jev.db-shm` beside
-it; a checkpoint folds them back in.
+it; a checkpoint folds them back in. The server runs with a `umask` of `077`,
+so all three are readable by you alone wherever `TYPESAFE_DB` puts them.
+`secure_delete` is on: a pruned or cleared call is overwritten with zeros,
+and `--clear-history` also empties the write-ahead log.
 
 ## Cache keys
 
@@ -376,15 +379,15 @@ that wobble. Pass `"cache": false` when you are measuring rather than deciding.
 
 ## How it is tested
 
-162 tests on the built-in `node --test` runner — no test framework installed.
+170 tests on the built-in `node --test` runner — no test framework installed.
 
 - **Only the TypeSafe API is faked**, because it is external and billed.
   SQLite, the MCP protocol over a real child process, and two processes
   contending for one file all run for real.
 - **Every behaviour runs twice**: against the SQLite store and against the
   memory fallback.
-- **CI runs Node 20, 22 and 24.** Node 20 has no `node:sqlite`, so there the
-  SQLite suites skip and the fallback is what gets tested.
+- **CI runs Node 18, 20, 22 and 24.** Node 18 and 20 have no `node:sqlite`,
+  so there the SQLite suites skip and the fallback is what gets tested.
 - **The suite never touches a real key or a real home directory**: every server
   it starts gets `TYPESAFE_API_KEY`, `TYPESAFE_DB` and `JEV_BRIDGE_HOME`.
 - **The protocol is tested the way a client sees it**

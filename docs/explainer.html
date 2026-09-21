@@ -299,17 +299,21 @@ footer p{max-width:var(--measure)}
   <h3>The bridge, which is the part that runs</h3>
 <div class="tree"><span class="d">jev-bridge/</span>                       <span class="m">the repository</span>
 ├── <span class="d">src/</span>
-│   ├── server.mjs          <span class="s">715 lines</span>  <span class="m">MCP protocol, the 5 tools, CLI, retries</span>
-│   ├── store.mjs           <span class="s">627 lines</span>  <span class="m">SQLite cache, usage log, history; memory fallback</span>
-│   ├── history.mjs         <span class="s">196 lines</span>  <span class="m">certainty, filters, the stats a review reads</span>
-│   ├── ui.mjs              <span class="s">127 lines</span>  <span class="m">the dashboard's local server</span>
+│   ├── server.mjs          <span class="s">617 lines</span>  <span class="m">the 5 tools, question checks, the CLI</span>
+│   ├── mcp.mjs             <span class="s">260 lines</span>  <span class="m">JSON-RPC over stdio, both protocol eras</span>
+│   ├── catalog.mjs         <span class="s">538 lines</span>  <span class="m">instructions, tool schemas, the guide, prompts</span>
+│   ├── typesafe.mjs        <span class="s">226 lines</span>  <span class="m">the key, retries, timeouts, errors</span>
+│   ├── store.mjs           <span class="s">631 lines</span>  <span class="m">SQLite cache, usage log, history; memory fallback</span>
+│   ├── history.mjs         <span class="s">197 lines</span>  <span class="m">certainty, filters, the stats a review reads</span>
+│   ├── ui.mjs              <span class="s">128 lines</span>  <span class="m">the dashboard's local server</span>
 │   └── ui.html             <span class="s">894 lines</span>  <span class="m">the dashboard page, nothing fetched from the web</span>
-├── <span class="d">test/</span>                  <span class="s">1,103 lines</span>  <span class="m">95 tests, run by node --test</span>
-├── <span class="d">examples/</span>              <span class="s">148 lines</span>  <span class="m">build an evaluation set, replay it</span>
+├── <span class="d">test/</span>                  <span class="s">1,995 lines</span>  <span class="m">170 tests, run by node --test</span>
+├── <span class="d">examples/</span>              <span class="s">132 lines</span>  <span class="m">build an evaluation set, replay it</span>
+├── <span class="d">evidence/</span>                        <span class="m">recorded Claude Code sessions; the install guide and examples, run</span>
 ├── <span class="d">docs/</span>                            <span class="m">architecture, analytics, recipes, and this page</span>
 ├── LICENSE                            <span class="m">MIT</span>
 └── package.json                       <span class="m">no dependencies</span>
-<span class="tot"><b>2,916 lines of JavaScript and one page, 0 dependencies.</b></span></div>
+<span class="tot"><b>4,724 lines of JavaScript and one page, 0 dependencies.</b></span></div>
 <div class="tree"><span class="d">~/.jev-bridge/</span>                    <span class="m">created 0700 on first use</span>
 ├── .env                    <span class="s">chmod 600</span>  <span class="m">your API key, and nothing else</span>
 └── jev.db                             <span class="m">cached answers, the usage log, the call history</span>

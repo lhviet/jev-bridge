@@ -61,6 +61,21 @@ The report ([evidence/README.md](evidence/README.md)) says which checks passed.
 Keep every description and the instructions under 2 KB — Claude Code cuts
 them there — and put the rule that matters most first.
 
+## When you change the install guide or an example
+
+The README's install steps and every `jev_ask` request in the documentation
+are run as written, by scripts that read them out of the Markdown:
+
+```bash
+node evidence/install.mjs --source .   # the install guide in a sandbox with an empty HOME; it clones HEAD, so commit first
+node evidence/examples.mjs             # every documented request, sent live
+```
+
+Each rewrites its report — [evidence/install.md](evidence/install.md) and
+[evidence/examples.md](evidence/examples.md) — and exits 1 if a step or an
+answer no longer does what the text says. Both need `claude` and a TypeSafe
+key, and cost a few cents at most.
+
 ## Pull requests
 
 - Keep each pull request to one change.

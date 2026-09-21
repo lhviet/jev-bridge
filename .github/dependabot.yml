@@ -1,0 +1,8 @@
+# The package has no dependencies, so the only thing to keep current is the
+# actions the CI workflow runs.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

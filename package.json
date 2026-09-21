@@ -24,7 +24,9 @@
     "ui": "node src/server.mjs --ui",
     "history": "node src/server.mjs --history",
     "evidence": "node evidence/run.mjs && node evidence/validate-wire.mjs && node evidence/report.mjs",
-    "evidence:report": "node evidence/report.mjs"
+    "evidence:report": "node evidence/report.mjs",
+    "evidence:install": "node evidence/install.mjs --source .",
+    "evidence:examples": "node evidence/examples.mjs"
   },
   "engines": {
     "node": ">=18"

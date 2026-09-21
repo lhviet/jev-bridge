@@ -1,0 +1,631 @@
+{
+  "generated": "2026-09-21T13:09:23.327Z",
+  "node": "v24.21.0",
+  "models": "jev-1.13.0",
+  "passed": 15,
+  "total": 15,
+  "examples": [
+    {
+      "title": "A complete request",
+      "source": "README.md#a-complete-request",
+      "request": {
+        "state": "Help! My payouts have been failing for 3 days.",
+        "questions": {
+          "is_urgent": {
+            "type": "noul",
+            "instructions": "Does this convey urgency?"
+          },
+          "department": {
+            "type": "choice",
+            "instructions": "Which team should handle this?",
+            "criteria": {
+              "billing": "Payments, invoicing, refunds",
+              "technical": "Bugs, outages, integrations",
+              "sales": "Pricing, upgrades"
+            }
+          },
+          "frustration": {
+            "type": "score",
+            "instructions": "How frustrated is the customer?",
+            "criteria": [
+              "Calm",
+              "Frustrated",
+              "Very angry"
+            ]
+          }
+        }
+      },
+      "result": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "is_urgent": {
+            "type": "noul",
+            "noul": 0.95
+          },
+          "department": {
+            "type": "choice",
+            "choice": "billing",
+            "confidence": 0.82,
+            "probabilities": {
+              "billing": 0.88,
+              "sales": 0,
+              "technical": 0.12
+            }
+          },
+          "frustration": {
+            "type": "score",
+            "score": 1.04,
+            "confidence": 0.93,
+            "legend": {
+              "0": "Calm",
+              "1": "Frustrated",
+              "2": "Very angry"
+            },
+            "probabilities": {
+              "0": 0,
+              "1": 0.96,
+              "2": 0.04
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 399,
+          "output_tokens": 73
+        },
+        "bridge": {
+          "cached": false,
+          "latency_ms": 202.07,
+          "cost_usd": 0.000016758,
+          "attempts": 1,
+          "request_id": "req_01a0c415e1547c6d991dfd0f5607de3a",
+          "call_id": "ee44526e-1"
+        }
+      },
+      "checks": [
+        {
+          "label": "is_urgent is above 0.5",
+          "ok": true
+        },
+        {
+          "label": "department is billing",
+          "ok": true
+        },
+        {
+          "label": "frustration lands at \"Frustrated\" (between 0.5 and 1.5)",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "title": "1. Route a request and fill its arguments in one trip",
+      "source": "docs/recipes.md#1-route-a-request-and-fill-its-arguments-in-one-trip",
+      "request": {
+        "state": "Can you refund my last order? The mug arrived cracked and I have photos.",
+        "questions": {
+          "handler": {
+            "type": "choice",
+            "instructions": "Which handler should take this request?",
+            "criteria": {
+              "issue_refund": "Customer wants money back",
+              "track_order": "Asking where an order is",
+              "cancel_subscription": "Wants to stop recurring billing",
+              "none": "No handler fits"
+            }
+          },
+          "refund_reason": {
+            "type": "choice",
+            "instructions": "IF this is a refund, what is the stated reason?",
+            "criteria": {
+              "damaged": "Arrived broken or damaged",
+              "not_received": "Never arrived",
+              "wrong_item": "Wrong product sent",
+              "changed_mind": "No longer wants it"
+            }
+          },
+          "has_evidence": {
+            "type": "noul",
+            "instructions": "Does the customer say they have evidence such as photos?"
+          },
+          "needs_human": {
+            "type": "noul",
+            "instructions": "Does this need a human agent rather than automation?",
+            "criteria": {
+              "true": "Ambiguous, disputed, or high value",
+              "false": "A clear, routine, automatable case"
+            }
+          }
+        }
+      },
+      "result": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "handler": {
+            "type": "choice",
+            "choice": "issue_refund",
+            "confidence": 1,
+            "probabilities": {
+              "track_order": 0,
+              "cancel_subscription": 0,
+              "issue_refund": 1,
+              "none": 0
+            }
+          },
+          "refund_reason": {
+            "type": "choice",
+            "choice": "damaged",
+            "confidence": 1,
+            "probabilities": {
+              "wrong_item": 0,
+              "changed_mind": 0,
+              "not_received": 0,
+              "damaged": 1
+            }
+          },
+          "has_evidence": {
+            "type": "noul",
+            "noul": 0.99
+          },
+          "needs_human": {
+            "type": "noul",
+            "noul": 0.2
+          }
+        },
+        "usage": {
+          "input_tokens": 527,
+          "output_tokens": 138
+        },
+        "bridge": {
+          "cached": false,
+          "latency_ms": 85.65,
+          "cost_usd": 0.000022134000000000002,
+          "attempts": 1,
+          "request_id": "req_01a0c415e1de72bbb5f1c0c4787546af",
+          "call_id": "ee44526e-2"
+        }
+      },
+      "checks": [
+        {
+          "label": "handler is issue_refund",
+          "ok": true
+        },
+        {
+          "label": "refund_reason is damaged",
+          "ok": true
+        },
+        {
+          "label": "has_evidence is above 0.5",
+          "ok": true
+        },
+        {
+          "label": "needs_human is below 0.5",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "title": "2. Rerank what your search returned",
+      "source": "docs/recipes.md#2-rerank-what-your-search-returned",
+      "request": {
+        "state": {
+          "query": "How do I rotate the API key without downtime?",
+          "passages": {
+            "a": "Billing plans are charged monthly and can be cancelled at any time from the dashboard.",
+            "b": "To replace a credential, add the new key first, deploy, then revoke the old one. No restart needed.",
+            "c": "API keys are created in Settings. Each key is shown once and cannot be retrieved later.",
+            "d": "Our status page lists historical incidents and scheduled maintenance windows."
+          }
+        },
+        "questions": {
+          "a": {
+            "type": "score",
+            "instructions": "How well does `passages.a` answer `query`?",
+            "criteria": [
+              "Unrelated",
+              "Same topic but does not answer it",
+              "Partly answers it",
+              "Directly and completely answers it"
+            ]
+          },
+          "b": {
+            "type": "score",
+            "instructions": "How well does `passages.b` answer `query`?",
+            "criteria": [
+              "Unrelated",
+              "Same topic but does not answer it",
+              "Partly answers it",
+              "Directly and completely answers it"
+            ]
+          },
+          "c": {
+            "type": "score",
+            "instructions": "How well does `passages.c` answer `query`?",
+            "criteria": [
+              "Unrelated",
+              "Same topic but does not answer it",
+              "Partly answers it",
+              "Directly and completely answers it"
+            ]
+          },
+          "d": {
+            "type": "score",
+            "instructions": "How well does `passages.d` answer `query`?",
+            "criteria": [
+              "Unrelated",
+              "Same topic but does not answer it",
+              "Partly answers it",
+              "Directly and completely answers it"
+            ]
+          }
+        }
+      },
+      "result": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "a": {
+            "type": "score",
+            "score": 0.05,
+            "confidence": 0.95,
+            "legend": {
+              "0": "Unrelated",
+              "1": "Same topic but does not answer it",
+              "2": "Partly answers it",
+              "3": "Directly and completely answers it"
+            },
+            "probabilities": {
+              "0": 0.95,
+              "1": 0.05,
+              "2": 0,
+              "3": 0
+            }
+          },
+          "b": {
+            "type": "score",
+            "score": 2.99,
+            "confidence": 0.99,
+            "legend": {
+              "0": "Unrelated",
+              "1": "Same topic but does not answer it",
+              "2": "Partly answers it",
+              "3": "Directly and completely answers it"
+            },
+            "probabilities": {
+              "0": 0,
+              "1": 0,
+              "2": 0.01,
+              "3": 0.99
+            }
+          },
+          "c": {
+            "type": "score",
+            "score": 1.07,
+            "confidence": 0.9,
+            "legend": {
+              "0": "Unrelated",
+              "1": "Same topic but does not answer it",
+              "2": "Partly answers it",
+              "3": "Directly and completely answers it"
+            },
+            "probabilities": {
+              "0": 0.01,
+              "1": 0.91,
+              "2": 0.08,
+              "3": 0
+            }
+          },
+          "d": {
+            "type": "score",
+            "score": 0.13,
+            "confidence": 0.87,
+            "legend": {
+              "0": "Unrelated",
+              "1": "Same topic but does not answer it",
+              "2": "Partly answers it",
+              "3": "Directly and completely answers it"
+            },
+            "probabilities": {
+              "0": 0.87,
+              "1": 0.13,
+              "2": 0,
+              "3": 0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 646,
+          "output_tokens": 56
+        },
+        "bridge": {
+          "cached": false,
+          "latency_ms": 142.55,
+          "cost_usd": 0.000027132,
+          "attempts": 1,
+          "request_id": "req_01a0c415e235712092fc1ef28fcbe97a",
+          "call_id": "ee44526e-3"
+        }
+      },
+      "checks": [
+        {
+          "label": "b scores highest",
+          "ok": true
+        },
+        {
+          "label": "c, on topic but not an answer, ranks second",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "title": "3. Check a claim against its evidence",
+      "source": "docs/recipes.md#3-check-a-claim-against-its-evidence",
+      "request": {
+        "state": {
+          "claim": "The free plan includes 10 GB of storage.",
+          "source": "Free accounts may store up to 2 GB. Pro accounts include 100 GB and priority support."
+        },
+        "questions": {
+          "supported": {
+            "type": "noul",
+            "instructions": "Is `claim` fully supported by `source`?",
+            "criteria": {
+              "true": "Every part of the claim is stated in the source",
+              "false": "Any part is missing or altered"
+            }
+          },
+          "contradicted": {
+            "type": "noul",
+            "instructions": "Does `source` directly contradict `claim`?"
+          }
+        }
+      },
+      "result": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "supported": {
+            "type": "noul",
+            "noul": 0.01
+          },
+          "contradicted": {
+            "type": "noul",
+            "noul": 0.96
+          }
+        },
+        "usage": {
+          "input_tokens": 372,
+          "output_tokens": 39
+        },
+        "bridge": {
+          "cached": false,
+          "latency_ms": 109.45,
+          "cost_usd": 0.000015624,
+          "attempts": 1,
+          "request_id": "req_01a0c415e2c27fd59801b3f3735958af",
+          "call_id": "ee44526e-4"
+        }
+      },
+      "checks": [
+        {
+          "label": "supported is below 0.5",
+          "ok": true
+        },
+        {
+          "label": "contradicted is above 0.5",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "title": "4. Apply labels that can all be true at once",
+      "source": "docs/recipes.md#4-apply-labels-that-can-all-be-true-at-once",
+      "request": {
+        "state": "Third time this week the export button does nothing. I am on the Pro plan paying $40/mo and I want a refund if this is not fixed today.",
+        "questions": {
+          "reports_bug": {
+            "type": "noul",
+            "instructions": "Does the message report a product defect?"
+          },
+          "mentions_billing": {
+            "type": "noul",
+            "instructions": "Does the message mention billing, price or a plan?"
+          },
+          "requests_refund": {
+            "type": "noul",
+            "instructions": "Is the customer asking for a refund?"
+          },
+          "churn_risk": {
+            "type": "noul",
+            "instructions": "Does the message suggest the customer may leave?"
+          }
+        }
+      },
+      "result": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "reports_bug": {
+            "type": "noul",
+            "noul": 0.97
+          },
+          "mentions_billing": {
+            "type": "noul",
+            "noul": 0.99
+          },
+          "requests_refund": {
+            "type": "noul",
+            "noul": 0.96
+          },
+          "churn_risk": {
+            "type": "noul",
+            "noul": 0.88
+          }
+        },
+        "usage": {
+          "input_tokens": 356,
+          "output_tokens": 77
+        },
+        "bridge": {
+          "cached": false,
+          "latency_ms": 87.69,
+          "cost_usd": 0.000014952000000000002,
+          "attempts": 1,
+          "request_id": "req_01a0c415e33076fdbf370d40a2c460d5",
+          "call_id": "ee44526e-5"
+        }
+      },
+      "checks": [
+        {
+          "label": "all four labels are above 0.5",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "title": "5. Let code find candidates, and Jev pick the right one",
+      "source": "docs/recipes.md#5-let-code-find-candidates-and-jev-pick-the-right-one",
+      "request": {
+        "state": {
+          "text": "Ordered 3 Jan, dispatched 5 Jan, and it should reach you by 11 Jan. Returns close 25 Jan.",
+          "candidates": [
+            "3 Jan",
+            "5 Jan",
+            "11 Jan",
+            "25 Jan"
+          ]
+        },
+        "questions": {
+          "delivery_date": {
+            "type": "choice",
+            "instructions": "Which candidate is the expected DELIVERY date?",
+            "criteria": {
+              "3 Jan": null,
+              "5 Jan": null,
+              "11 Jan": null,
+              "25 Jan": null,
+              "none": "No candidate is the delivery date"
+            }
+          }
+        }
+      },
+      "result": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "delivery_date": {
+            "type": "choice",
+            "choice": "11 Jan",
+            "confidence": 1,
+            "probabilities": {
+              "none": 0,
+              "3 Jan": 0,
+              "5 Jan": 0,
+              "11 Jan": 1,
+              "25 Jan": 0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 396,
+          "output_tokens": 61
+        },
+        "bridge": {
+          "cached": false,
+          "latency_ms": 119.98,
+          "cost_usd": 0.000016632000000000003,
+          "attempts": 1,
+          "request_id": "req_01a0c415e3887daf990cafe237bb350f",
+          "call_id": "ee44526e-6"
+        }
+      },
+      "checks": [
+        {
+          "label": "delivery_date is 11 Jan",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "title": "6. Score dimensions once, decide the policy in code",
+      "source": "docs/recipes.md#6-score-dimensions-once-decide-the-policy-in-code",
+      "request": {
+        "state": "Fixes the thing. See ticket.",
+        "questions": {
+          "clarity": {
+            "type": "score",
+            "instructions": "How clearly does this pull request description explain the change?",
+            "criteria": [
+              "Says nothing useful",
+              "Names the area but not the change",
+              "Explains what changed",
+              "Explains what changed and why"
+            ]
+          },
+          "testability": {
+            "type": "score",
+            "instructions": "How well does it explain how to verify the change?",
+            "criteria": [
+              "No way to verify",
+              "Vague hint",
+              "Concrete steps or tests named"
+            ]
+          }
+        }
+      },
+      "result": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "clarity": {
+            "type": "score",
+            "score": 0.05,
+            "confidence": 0.95,
+            "legend": {
+              "0": "Says nothing useful",
+              "1": "Names the area but not the change",
+              "2": "Explains what changed",
+              "3": "Explains what changed and why"
+            },
+            "probabilities": {
+              "0": 0.95,
+              "1": 0.05,
+              "2": 0,
+              "3": 0
+            }
+          },
+          "testability": {
+            "type": "score",
+            "score": 0.21,
+            "confidence": 0.69,
+            "legend": {
+              "0": "No way to verify",
+              "1": "Vague hint",
+              "2": "Concrete steps or tests named"
+            },
+            "probabilities": {
+              "0": 0.79,
+              "1": 0.21,
+              "2": 0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 383,
+          "output_tokens": 33
+        },
+        "bridge": {
+          "cached": false,
+          "latency_ms": 89.58,
+          "cost_usd": 0.000016086,
+          "attempts": 1,
+          "request_id": "req_01a0c415e40179bfa7dce3ffc0c3818f",
+          "call_id": "ee44526e-7"
+        }
+      },
+      "checks": [
+        {
+          "label": "clarity is below 1 of 3",
+          "ok": true
+        },
+        {
+          "label": "testability is below 1 of 2",
+          "ok": true
+        }
+      ]
+    }
+  ]
+}
