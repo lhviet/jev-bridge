@@ -223,7 +223,7 @@ footer p{max-width:var(--measure)}
 <div class="wrap">
 
 <header>
-  <p class="kicker">jev-bridge 0.1.0 — written 20 September 2026, against <b>Jev&nbsp;1.13.0</b>.</p>
+  <p class="kicker">jev-bridge 0.2.0 — written 20 September 2026, updated 21 September, against <b>Jev&nbsp;1.13.0</b>.</p>
   <h1>Claude Code asks a question. Jev answers with a probability.</h1>
   <p class="standfirst">The TypeSafe plugin could only ever tell me <em>how</em> to write a good question. It had no way to send one. This is the piece that sends it — and, now, remembers the answer and keeps the books.</p>
 
@@ -240,7 +240,7 @@ footer p{max-width:var(--measure)}
     <div><b>184 ms</b><span>a live answer</span></div>
     <div><b>0.077 ms</b><span>the same answer again</span></div>
     <div><b>2,370&times;</b><span>faster on a repeat</span></div>
-    <div><b>95</b><span>tests, all green</span></div>
+    <div><b>170</b><span>tests, all green</span></div>
     <div><b>0</b><span>dependencies</span></div>
   </div>
 
@@ -633,7 +633,8 @@ flowchart LR
     <li>The recommended home is <code>~/.jev-bridge/.env</code> at <strong>chmod 600</strong>, in a directory the bridge creates at <strong>0700</strong>.</li>
     <li>Registered that way, your MCP client's config holds <strong>only the script path</strong>. That matters because those config files are routinely synced, pasted into issues and committed to dotfile repositories.</li>
     <li>The key is read fresh on every call, so rotating it is a one-file edit with no restart.</li>
-    <li>It is sent <strong>only</strong> to the TypeSafe API, as a Bearer header over HTTPS. It is never logged, never written to the database, and never returned in a tool result.</li>
+    <li>It is sent <strong>only</strong> to the TypeSafe API, as a Bearer header. Plain HTTP is refused unless the address is this machine, and a redirect is never followed, so a misconfigured base URL cannot pass the key on. It is never logged, never written to the database, and never returned in a tool result.</li>
+    <li>Only the <code>TYPESAFE_API_KEY=</code> line of a key file is read, and a key must be one run of printable characters. A file holding anything else is refused with an error that does not quote it — which is how a key with a line break in it used to end up in an error message.</li>
     <li><code>--selftest</code> prints the key's length and first eight characters, so you can tell <em>which</em> key loaded — and nothing more.</li>
     <li>The repository's <code>.gitignore</code> excludes every <code>.env</code> and every database file, so a key placed in a clone cannot be committed by accident.</li>
   </ul>
@@ -661,7 +662,7 @@ flowchart LR
 
 <section id="tests">
   <h2>How it is tested</h2>
-  <p class="sub">95 tests, no test framework installed — <code>node --test</code> is built in, like the database.</p>
+  <p class="sub">170 tests, no test framework installed — <code>node --test</code> is built in, like the database.</p>
   <p>Only the TypeSafe API is faked, because it is external and billed. SQLite, the MCP protocol and process contention all run for real. Every behaviour is checked twice: once against the SQLite store and once against the memory fallback.</p>
   <p>Passing tests prove nothing until they have been seen to fail, so each was re-run against a deliberately broken copy of the code:</p>
   <div class="table-scroll">
@@ -685,6 +686,12 @@ flowchart LR
     <tr><td>Certainty taken from the most sure answer</td><td>yes</td></tr>
     <tr><td>The dashboard skipping its Host check, or its token</td><td>yes</td></tr>
     <tr><td>A replay ignoring the reviewer's expected answer</td><td>yes</td></tr>
+    <tr><td>A key with a line break in it reaching the request</td><td>yes</td></tr>
+    <tr><td>A neighbouring variable in the key file taken for the key</td><td>yes</td></tr>
+    <tr><td>The key sent over plain HTTP, or a redirect followed</td><td>yes</td></tr>
+    <tr><td>Database files created readable by everyone</td><td>yes</td></tr>
+    <tr><td>A cleared history left readable in the file's free pages</td><td>yes</td></tr>
+    <tr><td>The dashboard's Content-Security-Policy on the page alone</td><td>yes</td></tr>
   </table>
   </div>
   <p>Beyond that, the bridge was driven from a real Claude Code session end to end — which is how the question-id bug was found, and something no unit test had thought to ask.</p>
@@ -745,7 +752,7 @@ chmod 600 ~/.jev-bridge/.env</pre>
 </section>
 
 <footer>
-  <p>jev-bridge 0.1.0 · MIT © 2026 Hoang Viet Le · not affiliated with TypeSafe AI. The plugin it complements: 6 files, 14,214 bytes, none of it executable. The bridge: <code>server.mjs</code> (571 lines), <code>store.mjs</code> (289) and <code>server.test.mjs</code> (380) — no dependencies, Node built-ins only, SQLite included. Contract from <a href="https://docs.typesafe.ai/api">docs.typesafe.ai/api</a>; the implementation is ours, so nothing auto-updates if the contract moves. <code>--selftest</code> is how that drift surfaces as a failure instead of a puzzle.</p>
+  <p>jev-bridge 0.2.0 · MIT © 2026 Hoang Viet Le · not affiliated with TypeSafe AI. The plugin it complements: 6 files, 14,214 bytes, none of it executable. The bridge: <code>server.mjs</code> (617 lines), <code>store.mjs</code> (631) and <code>server.test.mjs</code> (409) — no dependencies, Node built-ins only, SQLite included. Contract from <a href="https://docs.typesafe.ai/api">docs.typesafe.ai/api</a>; the implementation is ours, so nothing auto-updates if the contract moves. <code>--selftest</code> is how that drift surfaces as a failure instead of a puzzle.</p>
 </footer>
 
 </div>
