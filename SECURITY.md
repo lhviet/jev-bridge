@@ -21,17 +21,28 @@ Only the latest release receives security fixes while the project is pre-1.0.
 This is the part most worth scrutinising, so here is exactly what the code does:
 
 - The key is read from `TYPESAFE_API_KEY`, then `TYPESAFE_API_KEY_FILE`, then
-  `~/.jev-bridge/.env`, then a `.env` at the package root — in that order.
+  `~/.jev-bridge/.env`, then a `.env` at the package root — in that order. A
+  file is read for its `TYPESAFE_API_KEY=` line, or for a bare key alone on a
+  line; no other variable in it is ever taken for the key.
+- A key must be one run of printable characters. One with a space or a line
+  break — a malformed key file — is refused with an error that names the file
+  and does not quote the key.
 - It is sent **only** to the TypeSafe API, as an `Authorization: Bearer`
-  header over HTTPS. It is never logged, never written to the database, and
-  never included in a tool result.
-- `~/.jev-bridge` is created with mode `0700`. Keep the key file at `0600`.
+  header. The bridge refuses to send it over plain HTTP, except to this machine
+  (`localhost`, `127.0.0.1`, `[::1]`), and does not follow redirects, so a
+  misconfigured `TYPESAFE_BASE_URL` cannot pass it on. It is never logged,
+  never written to the database, and never included in a tool result.
+- `~/.jev-bridge` is created with mode `0700`, and everything the bridge
+  creates — the database and its journal files — is `0600`. Keep the key file
+  at `0600`.
 - The `--selftest` output prints the key's length and first eight characters so
   you can tell which key is loaded. Nothing more.
 
 ## What the database contains
 
-`~/.jev-bridge/jev.db` holds three things, and nothing in it leaves your machine:
+`~/.jev-bridge/jev.db` holds three things. It is never uploaded anywhere; what
+reaches your MCP client is covered under
+[Text you judged comes back later](#text-you-judged-comes-back-later).
 
 - **The answer cache** — answers keyed by SHA-256 hashes of the request. It
   holds no `state` and no question text. Answers do repeat your `choice` option
@@ -42,12 +53,30 @@ This is the part most worth scrutinising, so here is exactly what the code does:
     reviewer can judge whether the answer was right;
   - `meta` keeps answers, timings, costs and hashes, but **not** the state or
     the question text — a test checks the database file's bytes to hold it to
-    that;
+    that. Answers still repeat your `choice` option names and `score` level
+    labels. The hashes are plain SHA-256, so someone who can read the file and
+    guess a short state exactly can confirm the guess;
   - `off` keeps nothing.
 
   Calls are pruned after 30 days (`TYPESAFE_HISTORY_DAYS`), except those you
-  have reviewed. `jev-bridge --clear-history` deletes all of it. Changing the
-  mode does not rewrite calls already recorded.
+  have reviewed. `jev-bridge --clear-history` deletes all of it. Deleted rows
+  are overwritten with zeros (`secure_delete`) and the write-ahead log is
+  emptied, so the text does not linger in free pages; a test reads the file's
+  bytes to check. Changing the mode does not rewrite calls already recorded.
+
+## Text you judged comes back later
+
+With `TYPESAFE_HISTORY=full`, `jev_history` and the `jev://history` resources
+return stored states to your MCP client, and so to the model: the first 160
+characters in every list, and the whole state for one call. Two consequences:
+
+- **Stored text is untrusted input.** A state copied from an email or a web page
+  may contain instructions aimed at an agent, and it can come back days later
+  when the agent reviews past calls. Treat what those tools return as data,
+  and review verdicts before you rely on them in an evaluation set.
+- **One database serves every project.** A session in one project can list
+  the calls made from another. Point `JEV_BRIDGE_HOME` or `TYPESAFE_DB`
+  somewhere else per project to keep them apart, or use `meta` or `off`.
 
 Anything you export from the history carries what it kept — an evaluation set
 from `examples/eval-set.mjs` holds every reviewed state in full. The repository

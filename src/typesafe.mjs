@@ -52,24 +52,65 @@ export const isRetryable = (status) => status === 408 || status === 429 || (stat
 /* ── the key ─────────────────────────────────────────────────────────────── */
 
 /**
+ * A key is one run of printable ASCII. Anything else — a line break, a space —
+ * is a malformed key file, and fetch would reject the header by quoting it,
+ * which would carry the key into an error message.
+ */
+const KEY_SHAPE = /^[\x21-\x7e]+$/;
+
+/**
+ * The key a file holds: the value of its `TYPESAFE_API_KEY=` line, quoted or
+ * followed by a ` # comment`; or, in a file with no such line, a bare key alone
+ * on its line. Anything else is no key, so a neighbouring variable is never
+ * sent in its place.
+ */
+export function keyFromFile(text) {
+  const lines = text.split(/\r?\n/);
+  for (const line of lines) {
+    const m = line.match(/^[ \t]*(?:export[ \t]+)?TYPESAFE_API_KEY[ \t]*=[ \t]*(.*)$/);
+    if (!m) continue;
+    const quoted = m[1].match(/^(['"])(.*?)\1(?:[ \t]+#.*)?[ \t]*$/);
+    return (quoted ? quoted[2] : m[1].replace(/(^|[ \t]+)#.*$/, '')).trim() || null;
+  }
+  const content = lines.map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+  return content.length === 1 && !content[0].includes('=') ? content[0] : null;
+}
+
+/**
  * Resolution order: a real environment variable wins, then an explicit
  * TYPESAFE_API_KEY_FILE, then `~/.jev-bridge/.env`, then a `.env` at the
- * package root (convenient when running from a clone). A file may hold
- * `TYPESAFE_API_KEY=…` or just the bare key on its own line.
+ * package root (convenient when running from a clone). Throws, without quoting
+ * it, when the key found is not shaped like a key.
  */
 export function loadKey(root) {
+  const usable = (key, where) => {
+    if (KEY_SHAPE.test(key)) return key;
+    throw new Error(`The TypeSafe API key in ${where} has spaces, line breaks or other characters a key cannot have. `
+      + 'The file should hold the key alone, or a line TYPESAFE_API_KEY=<key>.');
+  };
   const fromEnv = env.TYPESAFE_API_KEY?.trim();
-  if (fromEnv) return fromEnv;
+  if (fromEnv) return usable(fromEnv, 'TYPESAFE_API_KEY');
 
   for (const path of [env.TYPESAFE_API_KEY_FILE, join(HOME, '.env'), root && join(root, '.env')].filter(Boolean)) {
     if (!existsSync(path)) continue;
-    const text = readFileSync(path, 'utf8');
-    const assigned = text.match(/^\s*(?:export\s+)?TYPESAFE_API_KEY\s*=\s*(.+)$/m);
-    const raw = assigned ? assigned[1] : text;
-    const key = raw.trim().replace(/^['"]|['"]$/g, '').trim();
-    if (key && !key.startsWith('#')) return key;
+    const key = keyFromFile(readFileSync(path, 'utf8'));
+    if (key) return usable(key, path);
   }
   return null;
+}
+
+/**
+ * The key travels only over HTTPS, and plain HTTP only to this machine (a local
+ * proxy, or a test's fake API). Returns why a base URL is refused, or null.
+ */
+export function insecureBase(base) {
+  let url;
+  try { url = new URL(base); } catch { return `The API base URL "${base}" is not a URL. Check TYPESAFE_BASE_URL.`; }
+  if (url.protocol === 'https:') return null;
+  const loopback = url.hostname === 'localhost' || url.hostname === '[::1]' || /^127\.\d+\.\d+\.\d+$/.test(url.hostname);
+  if (url.protocol === 'http:' && loopback) return null;
+  return `Refusing to send the API key to ${url.protocol}//${url.host}: only https:// is allowed, `
+    + 'or http:// to this machine. Check TYPESAFE_BASE_URL.';
 }
 
 /* ── waiting ─────────────────────────────────────────────────────────────── */
@@ -123,6 +164,10 @@ const backoff = (retry, policy) => {
  * so a caller can report progress; `signal` cancels the attempt and the wait.
  */
 export async function request(path, { method = 'GET', body, key, signal, onRetry, userAgent, policy = RETRY } = {}) {
+  // Checked here, where the key is attached, so no route to fetch skips them.
+  const refused = insecureBase(BASE);
+  if (refused) throw new Error(refused);
+  if (!KEY_SHAPE.test(key ?? '')) throw new Error('The TypeSafe API key has characters a key cannot have. Check its file or TYPESAFE_API_KEY.');
   for (let retry = 0; ; retry++) {
     if (signal?.aborted) throw cancelled(signal);
     const attempt = attemptSignal(signal, policy.timeoutMs);
@@ -132,6 +177,8 @@ export async function request(path, { method = 'GET', body, key, signal, onRetry
         method,
         body,
         signal: attempt.signal,
+        // The API never redirects. Following one could carry the key to another address.
+        redirect: 'manual',
         headers: {
           Authorization: `Bearer ${key}`,
           Accept: 'application/json',
@@ -171,7 +218,9 @@ export function describeFailure(status, body, requestId = null) {
     422: 'The request body failed validation. The detail below names the offending field.',
     429: 'Rate limited, and the retries were also rate limited. Back off and try again, or batch more questions per call.',
     529: 'TypeSafe is overloaded, and the retries also failed. Try again shortly.',
-  }[status] ?? (status >= 500 ? 'TypeSafe had a server error, and the retries failed too. Try again shortly.' : null);
+  }[status] ?? (status >= 500 ? 'TypeSafe had a server error, and the retries failed too. Try again shortly.'
+    : status >= 300 && status < 400 ? 'The API answered with a redirect, which is not followed, so the key goes nowhere else. Check TYPESAFE_BASE_URL.'
+    : null);
   const id = requestId ? ` (request id ${requestId})` : '';
   return `TypeSafe API returned ${status}${id}.${remedy ? ` ${remedy}` : ''}\n\n${detail}`;
 }

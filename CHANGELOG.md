@@ -58,6 +58,15 @@ All notable changes to this project are recorded here. The format follows
   evaluation set, and score any model against it before switching to it.
 - README: how to update an installation, and why to keep it apart from a
   working copy.
+- README: a Quick start at the top.
+- `evidence/install.mjs`: follows the README's install guide and Quick start
+  in a sandbox with an empty HOME, reading each command out of the README, and
+  writes `evidence/install.md` with every output.
+- `evidence/examples.mjs`: sends every documented `jev_ask` request live and
+  checks each against the decision its text describes; writes
+  `evidence/examples.md` and the raw `evidence/examples.json`.
+- CI runs on Node 18, the oldest version `engines` allows, as well as 20, 22
+  and 24. Dependabot keeps the workflow's actions current.
 
 ### Changed
 
@@ -90,6 +99,33 @@ All notable changes to this project are recorded here. The format follows
   recorded, as status `0`. Before, it was missing from the usage log.
 - The server writes out pending records when stopped by SIGINT, SIGTERM or
   SIGHUP.
+- `docs/recipes.md`: the rerank recipe shows its full request, one question
+  per passage, instead of one question and a note to repeat it.
+
+### Security
+
+- A key file holding a bare key and a second line (a comment, say) produced a
+  key with a line break in it. `fetch` rejects such a header by quoting it, and
+  that error reached the tool result, the progress message and the stored
+  history. A key must now be one run of printable characters; anything else is
+  refused with an error that names the file and does not quote the key.
+- A key file with an empty `TYPESAFE_API_KEY=` line, or no such line, could
+  have the next variable in it, or the whole file, sent as the key. The file
+  is now read line by line: the `TYPESAFE_API_KEY=` value (quoted, or with a
+  trailing `# comment`), or a bare key alone on its line, and nothing else.
+- The key is sent only over HTTPS, or plain HTTP to this machine, and redirects
+  are no longer followed. A `3xx` is reported with the remedy.
+- The database and its journal files are created `0600`; they were `0644`,
+  which mattered when `TYPESAFE_DB` pointed outside `~/.jev-bridge`. Existing
+  files keep their mode: `chmod 600 ~/.jev-bridge/jev.db*` to tighten them.
+- Deleted and pruned calls are overwritten with zeros (`secure_delete`), and
+  `--clear-history` also empties the write-ahead log. Before, cleared states
+  stayed readable in the file's free pages.
+- Every dashboard response carries a Content-Security-Policy, not only the page.
+- `evidence/run.mjs` leaves out `rate_limit_event` records, which describe the
+  recording account, and replaces the output of the recording machine's own
+  hooks with a note. The committed recordings were re-sanitised; no check
+  changed.
 
 ### Fixed
 

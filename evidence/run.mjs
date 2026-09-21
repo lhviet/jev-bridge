@@ -34,11 +34,22 @@ const ROOT = join(HERE, '..');
 const RUNS = join(HERE, 'runs');
 const CLAUDE = process.env.CLAUDE || 'claude';
 const MODEL = process.env.EVIDENCE_MODEL || 'sonnet';
+const HOOK_OUTPUT_REMOVED = '[removed by evidence/run.mjs: output of a hook from the recording machine\'s own Claude Code setup]';
 
-/** Keeps logs shareable: no home directory, and nothing about the rest of this machine's setup. */
+/**
+ * Keeps logs shareable: no home directory, and nothing about the rest of this machine's setup.
+ * Returns null for a record that is only about the recording account, which is then left out.
+ */
 export function sanitize(line) {
   const home = homedir();
   const rec = JSON.parse(line.split(home).join('~'));
+  // The account's own rate-limit windows: nothing to do with this server.
+  if (rec.type === 'rate_limit_event') return null;
+  // A hook from the recording machine's own settings or plugins. Record that it ran, not what it said.
+  if (rec.type === 'system' && rec.subtype === 'hook_response') {
+    for (const k of ['output', 'stdout', 'stderr']) if (rec[k]) rec[k] = HOOK_OUTPUT_REMOVED;
+    return JSON.stringify(rec);
+  }
   if (rec.type === 'system' && rec.subtype === 'init') {
     const keep = (xs = []) => xs.filter((x) => /jev|ToolSearch|McpResource/i.test(typeof x === 'string' ? x : x.name ?? ''));
     return JSON.stringify({
@@ -93,8 +104,9 @@ function run(scenario, work, db, trial = null) {
       const lines = (text) => text.split('\n').filter((l) => l.trim());
       let wire = [];
       try { wire = lines(readFileSync(rawWire, 'utf8')); } catch { /* the server never started */ }
-      writeFileSync(join(dir, 'wire.jsonl'), wire.map(sanitize).join('\n') + '\n');
-      writeFileSync(join(dir, 'transcript.jsonl'), lines(out).map(sanitize).join('\n') + '\n');
+      const clean = (records) => records.map(sanitize).filter((r) => r !== null).join('\n') + '\n';
+      writeFileSync(join(dir, 'wire.jsonl'), clean(wire));
+      writeFileSync(join(dir, 'transcript.jsonl'), clean(lines(out)));
       writeFileSync(join(dir, 'meta.json'), JSON.stringify({
         scenario: scenario.name, trial, about: scenario.about, started, finished: new Date().toISOString(), exit_code: code,
         model, env: scenario.env,

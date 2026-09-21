@@ -542,6 +542,9 @@ async function main() {
   if (argv.includes('--help') || argv.includes('-h')) { process.stdout.write(HELP + '\n'); process.exit(0); }
   if (argv.includes('--version') || argv.includes('-v')) { process.stdout.write(PKG.version + '\n'); process.exit(0); }
 
+  // The database holds what was asked. Whatever this process creates — the
+  // database, its journal, a data directory — is for this user alone.
+  process.umask(0o077);
   const store = await makeStore();
   // By default a signal ends the process without an 'exit' event, which would
   // drop the few records still waiting to be written. Exiting routes through it.
@@ -549,7 +552,8 @@ async function main() {
   const deps = { store, transport: liveTransport() };
 
   if (argv.includes('--selftest')) {
-    const key = loadKey();
+    let key = null;
+    try { key = loadKey(); } catch (err) { process.stderr.write(`key: ${err.message}\n`); process.exit(1); }
     process.stderr.write(`key: ${key ? `loaded (${key.length} chars, ${key.slice(0, 8)}…)` : 'MISSING'}\n`);
     if (!key) process.exit(1);
     process.stderr.write(`models: ${(await listModels()).models.map((m) => m.name).join(', ')}\n`);
@@ -603,7 +607,9 @@ async function main() {
     return;
   }
 
-  log(`ready — ${BASE}, model ${DEFAULT_MODEL}, ${store.kind} store, key ${loadKey() ? 'loaded' : 'MISSING'}`);
+  let keyStatus;
+  try { keyStatus = loadKey() ? 'loaded' : 'MISSING'; } catch (err) { keyStatus = `unusable: ${err.message}`; }
+  log(`ready — ${BASE}, model ${DEFAULT_MODEL}, ${store.kind} store, key ${keyStatus}`);
   serve(deps);
 }
 

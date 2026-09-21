@@ -15,9 +15,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 20 has no node:sqlite, so it exercises the in-memory fallback;
-        # 22 and 24 run the full suite, SQLite included.
-        node: [20, 22, 24]
+        # 18 is the oldest Node that package.json allows. 18 and 20 have no
+        # node:sqlite, so they exercise the in-memory fallback; 22 and 24 run
+        # the full suite, SQLite included.
+        node: [18, 20, 22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

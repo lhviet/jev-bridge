@@ -108,6 +108,15 @@ flowchart LR
   "questions": {
     "a": { "type": "score", "instructions": "How well does `passages.a` answer `query`?",
            "criteria": ["Unrelated", "Same topic but does not answer it",
+                        "Partly answers it", "Directly and completely answers it"] },
+    "b": { "type": "score", "instructions": "How well does `passages.b` answer `query`?",
+           "criteria": ["Unrelated", "Same topic but does not answer it",
+                        "Partly answers it", "Directly and completely answers it"] },
+    "c": { "type": "score", "instructions": "How well does `passages.c` answer `query`?",
+           "criteria": ["Unrelated", "Same topic but does not answer it",
+                        "Partly answers it", "Directly and completely answers it"] },
+    "d": { "type": "score", "instructions": "How well does `passages.d` answer `query`?",
+           "criteria": ["Unrelated", "Same topic but does not answer it",
                         "Partly answers it", "Directly and completely answers it"] }
   }
 }
@@ -122,7 +131,7 @@ d  ▋                     0.10
 a  ▍                     0.06
 ```
 
-The same `score` question is repeated for `b`, `c` and `d` in the same call. The instructive result is **c**: it is *about* API keys but never answers the question, and it lands exactly one level above the two unrelated passages. A keyword search would have ranked it first.
+Each passage gets the same `score` question, naming only its own passage, in the same call. The instructive result is **c**: it is *about* API keys but never answers the question, and it lands exactly one level above the two unrelated passages. A keyword search would have ranked it first.
 
 ---
 
