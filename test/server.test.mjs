@@ -7,7 +7,7 @@
  */
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, existsSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -399,5 +399,11 @@ describe('over MCP', { skip: noSqlite }, () => {
     assert.equal(r.structuredContent.cache_hits, 1);
     assert.equal(r.structuredContent.input_tokens, 798);
     assert.ok(existsSync(db), 'the TYPESAFE_DB path was used, not the real database');
+  });
+
+  test('the database and its journal are readable by this user alone', { skip: process.platform === 'win32' && 'POSIX modes' }, () => {
+    for (const f of [db, `${db}-wal`, `${db}-shm`].filter((p) => existsSync(p))) {
+      assert.equal((statSync(f).mode & 0o777).toString(8), '600', f);
+    }
   });
 });

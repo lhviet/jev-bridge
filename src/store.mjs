@@ -229,6 +229,8 @@ function sqliteStore(path, { DatabaseSync }, o) {
   db.exec('PRAGMA busy_timeout = 5000');
   enableWal(db);
   db.exec('PRAGMA synchronous = NORMAL');
+  // A deleted or pruned call is overwritten with zeros, not left readable in free pages.
+  db.exec('PRAGMA secure_delete = ON');
   db.exec(`
     CREATE TABLE IF NOT EXISTS cache (
       key             TEXT PRIMARY KEY,
@@ -447,6 +449,8 @@ function sqliteStore(path, { DatabaseSync }, o) {
       queue.flush();
       const n = q.histClear.run().changes;
       q.payloadClear.run();
+      // The write-ahead log still holds the pages as they were; fold it in and empty it.
+      db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
       return n;
     },
     summary({ days = 7, now = Date.now() } = {}) {

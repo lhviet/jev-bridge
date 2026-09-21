@@ -398,6 +398,23 @@ describe('history with SQLite, seen from outside the process', { skip: noSqlite 
     }
   });
 
+  test('a cleared history is not left readable in the database\'s free pages or its log', async () => {
+    const path = tmpDb();
+    const store = openStore(path, { sqlite });
+    const marker = 'cleared-state-marker';
+    for (let i = 0; i < 20; i++) await ask(store, { state: `${marker} ${i}: ${STATE}` });
+    store.flush();
+    store.clearHistory();
+    // Read while the database is still open, as it is when an MCP server holds it
+    // and `--clear-history` runs beside it: closing would fold the log in regardless.
+    const bytes = readdirSync(dirname(path))
+      .filter((f) => f.startsWith(basename(path)))
+      .map((f) => readFileSync(join(dirname(path), f), 'latin1'))
+      .join('');
+    store.close();
+    assert.ok(!bytes.includes(marker), 'a cleared state is still on disk');
+  });
+
   test('a history write that fails is logged, and neither the answer nor the usage log suffers', async () => {
     const path = tmpDb();
     const logged = [];
@@ -509,7 +526,7 @@ describe('the dashboard', () => {
       let text = '';
       res.setEncoding('utf8');
       res.on('data', (d) => (text += d));
-      res.on('end', () => resolve({ status: res.statusCode, type: res.headers['content-type'], text }));
+      res.on('end', () => resolve({ status: res.statusCode, type: res.headers['content-type'], csp: res.headers['content-security-policy'], text }));
     });
     req.on('error', reject);
     req.end(body);
@@ -521,6 +538,14 @@ describe('the dashboard', () => {
     const page = await hit(`/?token=${TOKEN}`);
     assert.equal(page.status, 200);
     assert.match(page.type, /text\/html/);
+  });
+
+  test('every response, not only the page, forbids scripts and framing', async () => {
+    for (const r of [await hit('/'), await hit('/api/report', { headers: auth }), await hit('/nowhere', { headers: auth })]) {
+      assert.match(r.csp ?? '', /default-src 'none'/, `${r.status} ${r.type}`);
+      assert.match(r.csp ?? '', /frame-ancestors 'none'/, `${r.status} ${r.type}`);
+    }
+    assert.match((await hit(`/?token=${TOKEN}`)).csp, /script-src 'nonce-/);
   });
 
   test('without the token, nothing is served', async () => {

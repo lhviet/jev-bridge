@@ -273,7 +273,11 @@ out.push('node evidence/report.mjs                 # rewrite this page');
 out.push('```');
 out.push('');
 out.push('Logs are sanitised as they are written ([`run.mjs`](run.mjs), `sanitize()`): the home directory becomes `~`, '
-  + 'thinking signatures are dropped, and the init record keeps only this server\'s tools and commands. Nothing else is changed.');
+  + 'thinking signatures are dropped, and the init record keeps only this server\'s tools and commands. '
+  + 'Records about the recording account (`rate_limit_event`) are left out, and the output of hooks from the recording machine\'s own '
+  + 'Claude Code setup is replaced by a note saying so; the `hook_started` and `hook_response` records stay, so it is visible that a hook ran. '
+  + 'In these recordings those were two `SessionStart` hooks from installed plugins: one injected a general guide to using skills, '
+  + 'the other a CLI update notice. Neither mentions Jev, TypeSafe or MCP. Nothing else is changed.');
 out.push('');
 
 writeFileSync(join(HERE, 'README.md'), out.join('\n'));

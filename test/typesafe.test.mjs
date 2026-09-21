@@ -9,6 +9,8 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -33,7 +35,7 @@ after(() => { fake.closeAllConnections?.(); fake.close(); });
 
 // BASE is read when the module loads, so point it at the fake first.
 process.env.TYPESAFE_API_URL = `http://127.0.0.1:${fake.address().port}/v1`;
-const { request, describeFailure, isRetryable, retryAfterMs, RETRY } = await import('../src/typesafe.mjs');
+const { request, describeFailure, isRetryable, retryAfterMs, RETRY, keyFromFile, loadKey, insecureBase } = await import('../src/typesafe.mjs');
 const { validateAsk } = await import('../src/server.mjs');
 
 const FAST = { ...RETRY, backoffInitialMs: 1, backoffMaxMs: 5 };
@@ -151,6 +153,80 @@ describe('the retry policy of the TypeSafe SDKs', () => {
   test('User-Agent is sent when given', async () => {
     await request('/models', { key: 'k', userAgent: 'jev-bridge/test', policy: FAST });
     assert.equal(seen.at(-1).agent, 'jev-bridge/test');
+  });
+});
+
+describe('the API key', () => {
+  const SECRET = 'sk-test-SECRET-1234';
+
+  test('a key file may hold the assignment, quoted or commented, or the bare key alone', () => {
+    assert.equal(keyFromFile(`TYPESAFE_API_KEY=${SECRET}\n`), SECRET);
+    assert.equal(keyFromFile(`export TYPESAFE_API_KEY = "${SECRET}"  # prod\r\n`), SECRET);
+    assert.equal(keyFromFile(`TYPESAFE_API_KEY='${SECRET}'`), SECRET);
+    assert.equal(keyFromFile(`# my key\nOTHER=1\nTYPESAFE_API_KEY=${SECRET} # prod\n`), SECRET);
+    assert.equal(keyFromFile(`${SECRET}\n# the prod key\n\n`), SECRET);
+  });
+
+  test('a file without a usable key yields none, never a neighbouring value', () => {
+    assert.equal(keyFromFile('TYPESAFE_API_KEY=\nOPENAI_API_KEY=sk-other\n'), null);
+    assert.equal(keyFromFile('OPENAI_API_KEY=sk-other\n'), null);
+    assert.equal(keyFromFile('# TYPESAFE_API_KEY=old\n'), null);
+    assert.equal(keyFromFile('one-key\nanother-key\n'), null);
+    assert.equal(keyFromFile(''), null);
+  });
+
+  test('a malformed key is refused without being quoted anywhere', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'jev-key-'));
+    const saved = { key: process.env.TYPESAFE_API_KEY, file: process.env.TYPESAFE_API_KEY_FILE };
+    try {
+      // Every file named here holds a key, so the lookup never reaches a real ~/.jev-bridge/.env.
+      const file = join(dir, '.env');
+      process.env.TYPESAFE_API_KEY_FILE = file;
+      delete process.env.TYPESAFE_API_KEY;
+      writeFileSync(file, `TYPESAFE_API_KEY=${SECRET} and more\n`);
+      assert.throws(() => loadKey(), (err) => /characters a key cannot have/.test(err.message) && !err.message.includes('SECRET'));
+      process.env.TYPESAFE_API_KEY = `${SECRET}\nsecond line`;
+      assert.throws(() => loadKey(), (err) => /characters a key cannot have/.test(err.message) && !err.message.includes('SECRET'));
+      delete process.env.TYPESAFE_API_KEY;
+      writeFileSync(file, `TYPESAFE_API_KEY=${SECRET}\n`);
+      assert.equal(loadKey(), SECRET);
+    } finally {
+      for (const [name, value] of [['TYPESAFE_API_KEY', saved.key], ['TYPESAFE_API_KEY_FILE', saved.file]]) {
+        if (value === undefined) delete process.env[name]; else process.env[name] = value;
+      }
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a key that would break the header never reaches fetch, whose error would quote it', async () => {
+    const before = seen.length;
+    await assert.rejects(request('/models', { key: `${SECRET}\n# prod`, policy: FAST }),
+      (err) => /characters a key cannot have/.test(err.message) && !err.message.includes('SECRET'));
+    assert.equal(seen.length, before, 'nothing was sent');
+  });
+
+  test('the key goes only over HTTPS, or plain HTTP to this machine', () => {
+    for (const ok of ['https://api.typesafe.ai/v1', 'http://127.0.0.1:8080/v1', 'http://localhost/v1', 'http://[::1]:9/v1']) {
+      assert.equal(insecureBase(ok), null, ok);
+    }
+    for (const bad of ['http://api.typesafe.ai/v1', 'http://10.0.0.5/v1', 'ftp://x.test', 'not a url']) {
+      assert.ok(insecureBase(bad), bad);
+    }
+    const out = spawnSync(process.execPath, ['--input-type=module', '-e', `
+      const m = await import(${JSON.stringify(join(SRC, 'typesafe.mjs'))});
+      try { await m.request('/models', { key: 'k' }); console.log('sent'); } catch (e) { console.log(e.message); }
+    `], { env: { PATH: process.env.PATH, HOME: process.env.HOME, TYPESAFE_BASE_URL: 'http://api.typesafe.test' }, encoding: 'utf8' });
+    assert.match(out.stdout, /Refusing to send the API key to http:\/\/api\.typesafe\.test/);
+  });
+
+  test('a redirect is reported, not followed', async () => {
+    const port = fake.address().port;
+    queue.length = 0;
+    queue.push({ status: 302, headers: { location: `http://127.0.0.1:${port}/v1/elsewhere` } });
+    const res = await request('/models', { key: 'k', policy: FAST });
+    assert.equal(res.status, 302);
+    assert.ok(!seen.some((s) => s.url === '/v1/elsewhere'), 'the redirect was followed');
+    assert.match(describeFailure(302, ''), /redirect, which is not followed/);
   });
 });
 
