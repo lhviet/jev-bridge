@@ -8,6 +8,13 @@ any MCP client — calibrated, typed judgments: yes/no probabilities, one-of-N
 choices and graded scores, instead of generated prose. Repeated questions are
 answered from a local cache for free, and every call's cost is recorded.
 
+It follows the official specs, not a guess at them: MCP **2026-07-28** *and*
+2025-11-25 (a dual-era server), Claude Code's own limits on what a server may
+declare, and the TypeSafe API and SDK contract. It is shown working in **real
+Claude Code sessions**, recorded message by message and checked against the
+official MCP JSON Schema. See [Proven with Claude Code](#proven-with-claude-code)
+and [Alignment with the official docs](#alignment-with-the-official-docs).
+
 [![CI](https://github.com/lhviet/jev-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/lhviet/jev-bridge/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Node](https://img.shields.io/badge/node-%E2%89%A518-43853d.svg)
@@ -31,6 +38,7 @@ ask:    Which team should handle this?
 
 - [Why this exists](#why-this-exists)
 - [How it works](#how-it-works)
+- [Proven with Claude Code](#proven-with-claude-code)
 - [Use cases](#use-cases)
 - [Prerequisites](#prerequisites)
 - [Install](#install)
@@ -40,13 +48,16 @@ ask:    Which team should handle this?
 - [Check it works](#check-it-works)
 - [Using it](#using-it)
 - [Tools](#tools)
+- [Resources, prompts and completions](#resources-prompts-and-completions)
 - [Caching](#caching)
 - [Cost and usage](#cost-and-usage)
 - [Call history](#call-history)
 - [Configuration](#configuration)
 - [Where your data lives](#where-your-data-lives)
+- [Alignment with the official docs](#alignment-with-the-official-docs)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
+- [References](#references)
 - [Related projects](#related-projects)
 - [Licence](#licence)
 
@@ -79,9 +90,19 @@ agent to design questions, and jev-bridge lets it ask them.
 
 **Features**
 
-- **Five tools** — `jev_ask`, `jev_usage`, `jev_history`, `jev_review`, `jev_models`.
-- **Typed output** — `jev_ask` declares an MCP `outputSchema` and returns
-  `structuredContent`.
+- **Five tools** — `jev_ask`, `jev_usage`, `jev_history`, `jev_review`,
+  `jev_models`, each with an `outputSchema`, `structuredContent` and the four
+  behaviour hints (read-only, destructive, idempotent, open-world).
+- **Both TypeSafe endpoints** — `POST /v1/systemone` and `GET /v1/models`, with
+  the official SDKs' retry policy, timeout and environment variable names.
+- **Resources, prompts and completions** — a question-design guide, live usage
+  and history as resources; three prompts that Claude Code turns into slash
+  commands; argument completion.
+- **Both MCP eras** — the stateless 2026-07-28 protocol (`server/discover`,
+  per-request `_meta`, cache hints, `subscriptions/listen`) and the
+  `initialize` handshake of 2025-11-25 and earlier, chosen per request.
+- **Cancellation and progress** — a cancelled call stops its HTTP request; a
+  call that asks for progress hears about each retry.
 - **An answer cache** — a repeated question returns in about 0.08 ms instead of
   about 180 ms, and costs nothing.
 - **Cost accounting** — tokens, cost, latency and outcome for every call.
@@ -178,9 +199,9 @@ sequenceDiagram
   else nothing usable is stored
     rect rgba(234,88,12,0.12)
       B->>T: POST /v1/systemone with Bearer key
-      opt 429 or 529
-        T-->>B: rate limited or overloaded
-        B->>B: back off, honouring retry-after, then retry
+      opt 408, 429 or 5xx (529 is overloaded)
+        T-->>B: timed out, rate limited or overloaded
+        B->>B: back off, honouring Retry-After, then retry (at most twice)
       end
       T-->>B: 200 · answers and usage
       B->>D: store the answers
@@ -219,6 +240,87 @@ zone — a boundary your data crosses.
 **Going deeper:** components, the storage decision, the database schema, how
 cache keys work and how it is tested are in
 **[docs/architecture.md](docs/architecture.md)**.
+
+## Proven with Claude Code
+
+Claude Code 2.1.278 was run headless against jev-bridge seven times, with only
+this server configured and [a wire tap](evidence/tap.mjs) logging every
+JSON-RPC message in between. The prompts ask for an outcome and never name a
+tool. Everything below is read from those logs. The full report, with every
+request the agent wrote and every answer, is
+**[evidence/README.md](evidence/README.md)**.
+
+- **24 of 24 checks passed** across the 7 sessions: Claude Sonnet 5 and Claude
+  Haiku 4.5, over both MCP 2025-11-25 and 2026-07-28, using all five tools, a
+  resource and a prompt.
+- **Every message validates against the official MCP JSON Schema**: 49 from the
+  server and 48 from Claude Code in those sessions, plus 53 server messages in
+  a sweep of every method, error paths included. All 10 tool schemas pass the
+  JSON Schema 2020-12 meta-schema that Claude Code checks them against.
+- **Claude Code identified itself as `claude-code` on every connection**, and
+  the server's own history filed each call under that name.
+
+```mermaid
+sequenceDiagram
+  participant C as Claude Code 2.1.278
+  participant B as jev-bridge
+  participant T as TypeSafe API
+  alt default: MCP 2025-11-25
+    C->>B: initialize (protocolVersion 2025-11-25)
+    B-->>C: 2025-11-25 · tools, resources, prompts, completions · instructions
+    C->>B: tools/list · prompts/list · resources/list
+  else MCP_PROTOCOL_NEGOTIATION=auto: MCP 2026-07-28
+    C->>B: server/discover (_meta protocolVersion 2026-07-28)
+    B-->>C: supportedVersions 2026-07-28, 2025-11-25, …
+    C->>B: tools/list · prompts/list · resources/list, each carrying _meta
+  end
+  Note over C: tool search: the agent loads jev_ask when the task calls for it
+  C->>B: resources/read jev://guide (when the instructions sent it there)
+  C->>B: tools/call jev_ask: every question in one call, with a progressToken
+  B--)C: notifications/progress
+  B->>T: POST /v1/systemone
+  T-->>B: answers + usage
+  B-->>C: structuredContent · call_id · resource_link
+```
+
+| Session | Protocol | What the agent did |
+| --- | --- | --- |
+| Four labels that can all be true, plus urgency; **every skill disabled**, so only the server's own text steered it | 2025-11-25 | Read `jev://guide`, then asked all 5 judgments in **one** `jev_ask`: a noul per label, a score for urgency |
+| Rerank four search results | 2026-07-28 | One `jev_ask` scoring every passage |
+| Route a ticket, record the known truth, audit the spend | 2026-07-28 | `jev_ask` → `jev_review` with **that call's `call_id`** and `expected` → `jev_usage` → `jev_history` |
+| `/mcp__jev__cost_report 1` | 2025-11-25 | `prompts/get`, then the two tools the prompt prescribes |
+| "Read `@jev:jev://guide`, then have Jev find the delivery date" | 2025-11-25 | `resources/read`, then a `choice` over the candidate dates with a `none` option, as the guide says |
+| The same on Haiku, without asking for Jev | 2025-11-25 | Read the guide, then called `jev_ask` itself |
+| "Is my key working?" on Haiku | 2026-07-28 | `jev_models` |
+
+**How reliably.** One recording shows something can happen, not how often it
+does, so three scenarios were recorded again, graded by the same checks.
+Batching every question into one call held in 3 of 3 runs for the multi-label
+and 3 of 3 for the rerank prompt. Haiku with the loose prompt called `jev_ask`
+in **5 of 6** runs. In the other it read the guide and answered by itself.
+That run is kept in the report, not dropped.
+
+**What the recordings changed.** The first recordings exposed three weaknesses
+in what the server told the agent, and each was fixed in the text rather than
+in the prompts:
+
+| Seen in an early recording | Why | Changed | Since |
+| --- | --- | --- | --- |
+| The rerank took two `jev_ask` calls: nouls first, then scores for the losers ([log](evidence/before/rerank-two-calls.wire.jsonl)) | Nothing said how to rank | "To rank candidates, give each its own score against the query in the same call" | One call, in every recording |
+| Haiku loaded `jev_models`, then tried `curl` against the API | The description quoted `GET /v1/models` | Raw endpoints removed from what the model reads; the instructions say the bridge holds the key | No more `curl`. The kept recording calls `jev_models` straight away; one run between still tried a shell command first |
+| Haiku read the guide and answered by itself | The guide read as reference, not as a step | The guide opens: design the questions here, then send them with `jev_ask` | 5 of 6 runs call `jev_ask` |
+
+And before any of this, jev-bridge 0.1.0 answered Claude Code's 2026-07-28
+probe with `-32601 Method not found` ([log](evidence/before/v0.1.0-discover-probe.wire.jsonl)).
+
+**Reproduce it:**
+
+```bash
+node evidence/run.mjs                           # record the sessions: needs claude and a TypeSafe key
+node evidence/run.mjs --trials 3 modern-rerank  # repeat one, to measure reliability
+node evidence/validate-wire.mjs                 # installs Ajv into the temp directory, outside the project
+node evidence/report.mjs                        # rewrite evidence/README.md
+```
 
 ## Use cases
 
@@ -436,6 +538,24 @@ claude mcp add --scope user jev -- node /absolute/path/to/jev-bridge/src/server.
 > claude mcp add --scope user jev -- "$(which node)" /absolute/path/to/jev-bridge/src/server.mjs
 > ```
 
+**Which protocol Claude Code speaks.** By default Claude Code opens a stdio
+server with the `initialize` handshake of MCP 2025-11-25, and jev-bridge
+answers it. To have Claude Code use the stateless 2026-07-28 revision instead,
+start it with:
+
+```bash
+MCP_SDK_GENERATION=v2 MCP_PROTOCOL_NEGOTIATION=auto claude
+```
+
+It then probes with `server/discover`, jev-bridge lists the versions it
+supports, and every request after that carries its own `_meta`. Both are
+recorded in [evidence/](evidence/README.md#the-two-protocol-revisions-as-recorded).
+
+**How Claude finds the tools.** With tool search on (the default), a session
+starts with only the tool names and the server's instructions. The instructions
+tell Claude which tasks call for Jev, so it loads `jev_ask` when one comes up.
+You do not have to name the tool.
+
 ## Other MCP clients
 
 Any client that launches stdio servers can use the same command. The usual JSON
@@ -547,9 +667,29 @@ See [Use cases](#use-cases) for six patterns with real output, and
 
 ## Tools
 
+Every tool declares a `title`, an `outputSchema`, and the four behaviour hints
+the MCP spec defines. A client may use the hints to decide what to confirm with
+you; they are hints, not guarantees.
+
+| Tool | Read-only | Destructive | Idempotent | Open world | Reaches |
+| --- | --- | --- | --- | --- | --- |
+| `jev_ask` | yes | no | yes | **yes** | `POST /v1/systemone` (billed), unless cached |
+| `jev_usage` | yes | no | yes | no | the local database |
+| `jev_history` | yes | no | yes | no | the local database |
+| `jev_review` | **no** | no | yes | no | the local database: writes a review |
+| `jev_models` | yes | no | yes | **yes** | `GET /v1/models` |
+
+`jev_ask` counts as read-only because it changes nothing you own; it is
+open-world because it calls TypeSafe. Every result carries `structuredContent`
+and the same JSON as text. A bad argument comes back as a tool error that names
+the field (`questions["q"] has an unknown field "options"…`), so the model can
+fix it and retry. An unknown tool is a JSON-RPC error, `-32602`.
+
 ### `jev_ask`
 
-Evaluate a `state` against typed questions.
+Evaluate a `state` against typed questions. The input schema spells out each
+question type — `noul`, `choice`, `score` — with its own `criteria` shape, so
+the model sees the exact contract before it writes a request.
 
 | Input | Required | Description |
 | --- | --- | --- |
@@ -559,9 +699,14 @@ Evaluate a `state` against typed questions.
 | `cache` | no | `false` forces a live call and refreshes the stored answer. |
 
 Returns `model`, `answers`, `usage`, and a `bridge` object: `cached`,
-`latency_ms`, `cost_usd` — what **this** call cost, which is `0` on a hit — and
-`call_id`, which names the call in the history. On a cache hit, `usage`
-describes the original call.
+`latency_ms`, `cost_usd` — what **this** call cost, which is `0` on a hit —
+`call_id`, which names the call in the history, `attempts`, and TypeSafe's
+`request_id`. On a cache hit, `usage` describes the original call. Clients on
+2025-06-18 or later also get a `resource_link` to `jev://history/<call_id>`.
+
+Before anything is sent, every question is checked against the API reference:
+a known type, instructions present, no unknown fields, a noul's criteria keyed
+only by `true`/`false`, 2–255 choice options, 2–10 score levels in an array.
 
 ### `jev_usage`
 
@@ -594,7 +739,43 @@ call it itself when you correct an answer, or you can review in the
 
 ### `jev_models`
 
-The model names and aliases your account may use. Also a cheap way to check a key.
+The model names and aliases your account may use (`GET /v1/models`, shaped as
+`{ models: [{ name, description, release_date }] }`). Also the cheapest way to
+check a key.
+
+## Resources, prompts and completions
+
+**Resources** are context a client can attach. In Claude Code, type `@` and
+pick one, or write `@jev:jev://guide`; Claude can also read them itself.
+
+| URI | What | Cache hint (2026-07-28) |
+| --- | --- | --- |
+| `jev://guide` | How to design Jev questions, condensed from TypeSafe's docs, with links | public, 1 day |
+| `jev://models` | The models this key may use, fetched live | private, 1 hour |
+| `jev://usage` | Usage over the last 7 days, as `jev_usage` returns it | private, 0 |
+| `jev://history` | The last 20 calls and their stats, as `jev_history` returns them | private, 0 |
+| `jev://history/{id}` | One call in full (a resource template) | private, 0 |
+
+`jev://usage`, `jev://history` and `jev://history/{id}` can be subscribed to:
+`resources/subscribe` in 2025-11-25, `subscriptions/listen` in 2026-07-28. The
+server says when each changes.
+
+**Prompts** are workflows you start. Claude Code lists each as a slash command,
+`/mcp__<server>__<prompt>`, with arguments separated by spaces:
+
+| Prompt | Arguments | Does |
+| --- | --- | --- |
+| `review_uncertain` | `days`, `below` | Walks the calls Jev was least sure of, judges each, records verdicts with `jev_review` |
+| `cost_report` | `days` | Spend, hit rate, latency and the calls that should have been batched |
+| `question_design` | — | Loads the guide and drafts the `jev_ask` request for the task in hand |
+
+```text
+/mcp__jev__cost_report 30
+/mcp__jev__review_uncertain 7 0.7
+```
+
+**Completions** suggest values for prompt arguments (`days`, `below`) and for
+the `{id}` of `jev://history/{id}` (recent call ids).
 
 ## Caching
 
@@ -747,15 +928,18 @@ Everything is optional.
 | `TYPESAFE_API_KEY_FILE` | — | Read the key from this file instead. |
 | `JEV_BRIDGE_HOME` | `~/.jev-bridge` | Where the key file and database live. |
 | `TYPESAFE_DB` | `$JEV_BRIDGE_HOME/jev.db` | The database path. |
-| `TYPESAFE_MODEL` | `jev-latest` | Default model. Pin a version such as `jev-1.13.0` if you tune thresholds against it. |
+| `TYPESAFE_DEFAULT_MODEL` | `jev-latest` | Default model, the SDKs' name for it. Pin a version such as `jev-1.13.0` if you tune thresholds against it. `TYPESAFE_MODEL` also works. |
 | `TYPESAFE_CACHE_TTL_DAYS` | `7` | How long an answer stays fresh. |
 | `TYPESAFE_CACHE_MAX` | `20000` | Cache entries kept before eviction. |
 | `TYPESAFE_HISTORY` | `full` | `full`, `meta` or `off`: how much of each call to keep for review. See [Call history](#call-history). |
 | `TYPESAFE_HISTORY_DAYS` | `30` | How long an unreviewed call is kept. |
 | `TYPESAFE_HISTORY_MAX` | `10000` | Unreviewed calls kept before the oldest go. |
 | `TYPESAFE_USD_PER_MTOK` | `0.042` | Price used to compute cost. |
-| `TYPESAFE_TIMEOUT_MS` | `60000` | Per-request timeout. |
-| `TYPESAFE_API_URL` | `https://api.typesafe.ai/v1` | API base URL. |
+| `TYPESAFE_TIMEOUT_MS` | `10000` | Timeout per attempt, as in the SDKs. There is no total budget. |
+| `TYPESAFE_MAX_RETRIES` | `2` | Retries after the first attempt, for 408, 429, 5xx, timeouts and dropped connections. `0` turns retrying off. |
+| `TYPESAFE_BACKOFF_INITIAL_MS` | `500` | First backoff, doubling to 5 s with 25 % jitter. A `Retry-After` or `retry-after-ms` up to 60 s is used instead. |
+| `TYPESAFE_BASE_URL` | `https://api.typesafe.ai` | API root, the SDKs' name for it; `/v1` is added. |
+| `TYPESAFE_API_URL` | — | Full API base including `/v1`. Wins over `TYPESAFE_BASE_URL` when both are set. |
 
 The key is looked up in this order: `TYPESAFE_API_KEY`,
 `TYPESAFE_API_KEY_FILE`, `~/.jev-bridge/.env`, then a `.env` at the repository
@@ -778,6 +962,65 @@ to keep nothing. Answers repeat your option names and score level labels, in
 every mode. Nothing in the database leaves your machine. Your key is sent only
 to the TypeSafe API and is never logged. See [SECURITY.md](SECURITY.md).
 
+## Alignment with the official docs
+
+Each row names the rule, where it is written down, what jev-bridge does about
+it, and what checks it. "Test" means `npm test`; "recorded" means a real Claude
+Code session in [evidence/](evidence/README.md); "schema" means
+[`validate-wire.mjs`](evidence/validate-wire.mjs), which runs every message
+through the official MCP JSON Schema.
+
+### MCP, revisions 2026-07-28 and 2025-11-25
+
+| Rule | jev-bridge | Checked by |
+| --- | --- | --- |
+| A server may serve both eras, choosing per request ([versioning](https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning#backward-compatibility-with-initialization-based-versions)) | A request whose `_meta` names a version is served statelessly; `initialize` starts a 2025-11-25-or-earlier session | test, recorded both ways |
+| Servers **MUST** implement `server/discover` ([discovery](https://modelcontextprotocol.io/specification/2026-07-28/server/discover)) | Returns `supportedVersions`, capabilities, instructions, `serverInfo` in `_meta`, `ttlMs`, `cacheScope` | test, recorded, schema |
+| An unsupported version is `-32022` with `supported` and `requested` ([versioning](https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning#protocol-version-negotiation)) | Yes | test, schema |
+| A request without `clientCapabilities` is malformed: `-32602` ([`_meta`](https://modelcontextprotocol.io/specification/2026-07-28/basic/index#meta)) | Yes | test, schema |
+| Every result carries `resultType`; `serverInfo` in `_meta` ([base protocol](https://modelcontextprotocol.io/specification/2026-07-28/basic/index#resulttype)) | In 2026-07-28 results; left out of older ones | test, schema |
+| List and read results carry `ttlMs` and `cacheScope` ([caching](https://modelcontextprotocol.io/specification/2026-07-28/server/utilities/caching)) | Lists: public, 1 hour. Reads: per resource | test, schema |
+| `initialize` and `ping` are gone from 2026-07-28 ([changelog](https://modelcontextprotocol.io/specification/2026-07-28/changelog)) | `-32601` in that era; still served to older clients | test, schema |
+| `initialize` answers with the requested version if supported, else one it supports ([lifecycle](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle#version-negotiation)) | Echoes 2024-11-05 through 2025-11-25; anything else gets 2025-11-25 | test |
+| Tools: `title`, `annotations`, `outputSchema`; `structuredContent` that fits it, plus the same JSON as text; a fixed order ([tools](https://modelcontextprotocol.io/specification/2026-07-28/server/tools)) | All five tools | test (each result checked against its schema), schema |
+| Unknown tool: protocol error `-32602`. Bad input or API failure: a result with `isError` ([tool errors](https://modelcontextprotocol.io/specification/2026-07-28/server/tools#error-handling)) | Yes | test |
+| Resources, templates, and update notifications ([resources](https://modelcontextprotocol.io/specification/2026-07-28/server/resources), [subscriptions](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/subscriptions)) | 4 resources, 1 template; `resources/subscribe` before 2026-07-28, `subscriptions/listen` after, acknowledged first and closed gracefully | test, schema |
+| A missing resource is `-32602` in 2026-07-28, `-32002` before ([base protocol](https://modelcontextprotocol.io/specification/2026-07-28/basic/index#error-codes)) | Chosen by era | test |
+| Prompts ([prompts](https://modelcontextprotocol.io/specification/2026-07-28/server/prompts)) and completion ([completion](https://modelcontextprotocol.io/specification/2026-07-28/server/utilities/completion)) | 3 prompts; completions for their arguments and for call ids | test, recorded, schema |
+| Progress only for requests that sent a `progressToken`, always increasing, never after the response ([progress](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/progress)) | On start and on each retry | test, recorded |
+| Cancellation: stop work, send no response ([cancellation](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/cancellation)) | Aborts the HTTP request and its backoff wait | test |
+| stdio: only MCP messages on stdout; logs to stderr; exit when stdin closes ([stdio](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio)) | Yes; in-flight answers are drained first | test |
+| Logging, sampling and roots are deprecated ([deprecated features](https://modelcontextprotocol.io/specification/2026-07-28/deprecated)) | Not implemented, on purpose: diagnostics go to stderr | — |
+| Elicitation through multi round-trip requests ([MRTR](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/mrtr)), the tasks extension, icons | Not used: no call needs your input halfway (`jev_review` takes the verdict as arguments), a call finishes in about 200 ms, and icons are optional | — |
+
+### Claude Code as the client
+
+| Claude Code does this ([MCP docs](https://code.claude.com/docs/en/mcp)) | So jev-bridge |
+| --- | --- |
+| Defers MCP tools behind tool search; a session starts with tool names and server instructions only | Server instructions say which tasks call for Jev and what each tool is for |
+| Cuts tool descriptions and server instructions at 2 KB | Keeps the longest, `jev_ask`, near 1.6 KB, with the rules first; a test enforces the limit |
+| Drops a tool whose input schema is not valid JSON Schema 2020-12, or whose top-level property names break `[A-Za-z0-9_.-]{1,64}` | Every schema passes Ajv's 2020-12 meta-schema check; a test checks the names |
+| Rewrites root-level `anyOf`/`oneOf` | Has none at the root; the three question shapes are a `oneOf` inside `questions` |
+| Saves results over its output limit to a file | `jev_history` declares `anthropic/maxResultSizeChars` so a long report stays inline |
+| Lists MCP prompts as `/mcp__<server>__<prompt>`, splitting arguments on spaces | Every prompt argument is a single token |
+| Offers resources with `@` and reads them with `ReadMcpResourceTool` | The guide is a resource the instructions point to; recorded being read |
+| Negotiates 2026-07-28 on its v2 runtime with `MCP_PROTOCOL_NEGOTIATION=auto` | Answers the `server/discover` probe; recorded |
+| Sends a `progressToken` with every tool call | Reports the start of each live call on it (recorded) and every retry (tested) |
+
+### The TypeSafe API and SDKs
+
+| Official contract ([API](https://docs.typesafe.ai/api), [models](https://docs.typesafe.ai/models), SDK [retries](https://docs.typesafe.ai/sdk/python/api/retries), [RetryPolicy](https://docs.typesafe.ai/sdk/javascript/api/interfaces/RetryPolicy), [constants](https://docs.typesafe.ai/sdk/python/api/constants)) | jev-bridge |
+| --- | --- |
+| `POST /v1/systemone`: `state` a string, object or array; `questions` a map of `noul`, `choice` or `score` | `jev_ask`, with the shapes checked before sending |
+| `instructions` and criteria entries: string, object or array; choice ≤ 255 options; score 2–10 levels | Same checks locally, naming the field that fails |
+| `GET /v1/models` returns `{ models: [{ name, description, release_date }] }` | `jev_models` and `jev://models`, typed |
+| Retry 408, 429 and 500–599, connection errors and timeouts; at most 2 retries; backoff 500 ms doubling to 5 s, 25 % jitter; honour `Retry-After` and `retry-after-ms` up to 60 s | The same defaults, tested one by one |
+| Timeout 10 s per attempt, no total budget | The same |
+| Environment: `TYPESAFE_API_KEY`, `TYPESAFE_BASE_URL`, `TYPESAFE_DEFAULT_MODEL` | Read, as well as the bridge's older names |
+| Errors carry `x-typesafe-request-id` | Quoted in every error, and returned as `bridge.request_id` |
+| 64k tokens per request; 32k for state plus the longest question; text only | Stated in the `jev_ask` description and the guide |
+| Batch every question about one state in one call; ids are never sent to the model; include a none option; one noul per label ([primitives](https://docs.typesafe.ai/primitives), [fan-out](https://docs.typesafe.ai/patterns/fan-out)) | Stated first in the description; recorded agents batching |
+
 ## Troubleshooting
 
 **`claude mcp list` shows the server as failed.** Run the command it shows by
@@ -796,8 +1039,10 @@ characters.
 Everything works, but the cache is in memory and resets each session. Upgrade
 Node, or register the server with the absolute path of a newer one.
 
-**`429` or `529` errors.** jev-bridge already retries these with backoff. If
-they persist, you are over your rate limit or TypeSafe is under load.
+**`429`, `529` or other `5xx` errors.** jev-bridge already retries these —
+and `408`, timeouts and dropped connections — twice, with backoff, as the
+TypeSafe SDKs do. If they persist, you are over your rate limit or TypeSafe is
+under load. The error names TypeSafe's request id; quote it to their support.
 
 **The dashboard is empty.** It reads the same database as the MCP server, so
 check both see the same `TYPESAFE_DB` and `JEV_BRIDGE_HOME`, and that the MCP
@@ -818,20 +1063,33 @@ npm test          # the full suite, on the built-in node --test runner
 npm run selftest  # one live call against the real API
 npm run stats     # usage over the last 7 days
 npm run ui        # the call-history dashboard
+npm run evidence  # record real Claude Code sessions (costs a little), then validate and report
 ```
 
 ```text
 jev-bridge/
 ├── src/
-│   ├── server.mjs        MCP protocol, the five tools, CLI, retries
+│   ├── server.mjs        askJev, question checks, the MCP methods, the CLI
+│   ├── mcp.mjs           JSON-RPC over stdio, both protocol eras, cancellation, progress, subscriptions
+│   ├── catalog.mjs       server instructions, tool schemas and hints, the guide, prompts
+│   ├── typesafe.mjs      the TypeSafe API: key, SDK retry policy, timeouts, errors
 │   ├── store.mjs         SQLite cache, usage log and history; memory fallback
 │   ├── history.mjs       certainty, filters and the stats a review reads
 │   ├── ui.mjs            the dashboard's local server: token, Host check, JSON API
 │   └── ui.html           the dashboard page, no network dependencies
 ├── test/
+│   ├── protocol.test.mjs 37 tests: both eras, every method, Claude Code's limits
+│   ├── typesafe.test.mjs 29 tests: retry policy, Retry-After, timeouts, env names, argument checks
 │   ├── server.test.mjs   36 tests
 │   ├── history.test.mjs  55 tests
-│   └── examples.test.mjs  4 tests
+│   ├── examples.test.mjs  4 tests
+│   └── schema-check.mjs  a small JSON Schema checker the tests use
+├── evidence/
+│   ├── README.md         the report: real Claude Code sessions, checks, schema validation
+│   ├── run.mjs           records the sessions in scenarios.mjs through tap.mjs
+│   ├── validate-wire.mjs checks every message against the official MCP JSON Schema
+│   ├── report.mjs        writes the report from the recordings
+│   └── runs/             the recorded sessions: wire logs, transcripts, trials
 ├── examples/
 │   ├── eval-set.mjs      reviewed calls as an evaluation set (JSONL)
 │   └── replay.mjs        score a model against that set
@@ -846,6 +1104,39 @@ Only the TypeSafe API is faked in tests. SQLite, the MCP protocol and
 multi-process database contention run for real. See
 [CONTRIBUTING.md](CONTRIBUTING.md) — in particular, the project takes **no
 runtime dependencies**.
+
+## References
+
+The documents this server was checked against, read on 2026-09-20.
+
+**Model Context Protocol**
+- [Specification 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/index) and its [changelog](https://modelcontextprotocol.io/specification/2026-07-28/changelog):
+  [versioning](https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning), [base protocol and `_meta`](https://modelcontextprotocol.io/specification/2026-07-28/basic/index),
+  [stdio](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio), [discovery](https://modelcontextprotocol.io/specification/2026-07-28/server/discover),
+  [tools](https://modelcontextprotocol.io/specification/2026-07-28/server/tools), [resources](https://modelcontextprotocol.io/specification/2026-07-28/server/resources),
+  [prompts](https://modelcontextprotocol.io/specification/2026-07-28/server/prompts), [completion](https://modelcontextprotocol.io/specification/2026-07-28/server/utilities/completion),
+  [caching](https://modelcontextprotocol.io/specification/2026-07-28/server/utilities/caching), [progress](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/progress),
+  [cancellation](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/cancellation),
+  [subscriptions](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/subscriptions), [deprecated features](https://modelcontextprotocol.io/specification/2026-07-28/deprecated)
+- [Specification 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/index): [lifecycle](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle), [tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
+- JSON Schema: [2026-07-28](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2026-07-28/schema.json),
+  [2025-11-25](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-11-25/schema.json)
+
+**Claude Code**
+- [Connect Claude Code to tools via MCP](https://code.claude.com/docs/en/mcp): client runtimes and protocol
+  negotiation, tool search and server instructions, output limits and
+  `anthropic/maxResultSizeChars`, schema checks, resources, prompts as commands
+
+**TypeSafe**
+- [API reference](https://docs.typesafe.ai/api), [Models and limits](https://docs.typesafe.ai/models)
+- [Primitives](https://docs.typesafe.ai/primitives): [noul](https://docs.typesafe.ai/primitives/noul), [choice](https://docs.typesafe.ai/primitives/choice),
+  [score](https://docs.typesafe.ai/primitives/score), [structured instructions](https://docs.typesafe.ai/primitives/advanced);
+  [confidence](https://docs.typesafe.ai/confidence), [state](https://docs.typesafe.ai/concepts/state), [speculative fan-out](https://docs.typesafe.ai/patterns/fan-out),
+  [Jev 1.13 jaggedness](https://docs.typesafe.ai/model-jaggedness/jev-1.13)
+- SDKs: [JavaScript `RetryPolicy`](https://docs.typesafe.ai/sdk/javascript/api/interfaces/RetryPolicy),
+  [client config](https://docs.typesafe.ai/sdk/javascript/api/interfaces/TypeSafeClientConfig),
+  [Python retries](https://docs.typesafe.ai/sdk/python/api/retries), [constants](https://docs.typesafe.ai/sdk/python/api/constants),
+  [exceptions](https://docs.typesafe.ai/sdk/python/api/exceptions)
 
 ## Related projects
 

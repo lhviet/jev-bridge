@@ -4,8 +4,9 @@
  *
  * The `typesafe@typesafe-ai` plugin ships a SKILL.md and nothing else: it is
  * prompt guidance with no network capability. This server is the missing wire.
- * It exposes the one TypeSafe endpoint as MCP tools so an agent can actually
- * obtain a judgment instead of only reading about how to design one.
+ * It exposes TypeSafe's two endpoints — POST /v1/systemone and GET /v1/models —
+ * as MCP tools and resources, so an agent can obtain a judgment instead of only
+ * reading about how to design one.
  *
  * Zero dependencies — Node built-ins only. Caching needs Node >= 22.5 for
  * `node:sqlite`; on anything older the bridge still runs, from memory.
@@ -16,12 +17,14 @@
  * as "server disconnected" with no clue why.
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FILTER_NAMES, VERDICTS, historyReport, reviewCall } from './history.mjs';
+import { GUIDE, GUIDE_URI, INSTRUCTIONS, PROMPTS, RESOURCES, TEMPLATES, TOOLS } from './catalog.mjs';
+import { FILTER_NAMES, historyReport, reviewCall } from './history.mjs';
+import { ERRORS, McpError, createProtocol } from './mcp.mjs';
 import { HISTORY_MODES, cacheKey, openStore, questionFingerprint } from './store.mjs';
+import { BASE, DEFAULT_MODEL, HOME, RETRY, describeFailure, loadKey as loadKeyFrom, request } from './typesafe.mjs';
 import { startUi } from './ui.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -30,11 +33,6 @@ const PKG = (() => {
   try { return JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')); } catch { return { version: '0.0.0' }; }
 })();
 
-/** Where the key and the database live unless told otherwise. Created 0700 on first use. */
-const HOME = process.env.JEV_BRIDGE_HOME || join(homedir(), '.jev-bridge');
-const BASE = (process.env.TYPESAFE_API_URL || 'https://api.typesafe.ai/v1').replace(/\/+$/, '');
-const DEFAULT_MODEL = process.env.TYPESAFE_MODEL || 'jev-latest';
-const TIMEOUT_MS = Number(process.env.TYPESAFE_TIMEOUT_MS || 60000);
 const DB_PATH = process.env.TYPESAFE_DB || join(HOME, 'jev.db');
 const USD_PER_MTOK = Number(process.env.TYPESAFE_USD_PER_MTOK || 0.042); // published Jev 1.13 input price
 const TTL_DAYS = Number(process.env.TYPESAFE_CACHE_TTL_DAYS || 7);
@@ -42,101 +40,56 @@ const MAX_ENTRIES = Number(process.env.TYPESAFE_CACHE_MAX || 20000);
 const HISTORY = (process.env.TYPESAFE_HISTORY || 'full').trim().toLowerCase();
 const HISTORY_DAYS = Number(process.env.TYPESAFE_HISTORY_DAYS || 30);
 const HISTORY_MAX = Number(process.env.TYPESAFE_HISTORY_MAX || 10000);
-const SERVER = { name: 'jev-bridge', version: PKG.version };
-const FALLBACK_PROTOCOL = '2025-06-18';
+const USER_AGENT = `jev-bridge/${PKG.version} (node ${process.version})`;
+
+export const SERVER_INFO = {
+  name: 'jev-bridge',
+  title: 'Jev (TypeSafe System One)',
+  version: PKG.version,
+  description: 'Calibrated, typed judgments from TypeSafe\'s Jev, with a local answer cache, cost accounting and a reviewable call history.',
+  websiteUrl: 'https://github.com/lhviet/jev-bridge',
+};
 
 const log = (...a) => process.stderr.write(`[jev-bridge] ${a.join(' ')}\n`);
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const priceOf = (tokens, usdPerMtok) => (tokens * usdPerMtok) / 1e6;
 
-/* ── credential ──────────────────────────────────────────────────────────── */
+/** The key, looked up afresh on every call so a rotated key needs no restart. */
+export const loadKey = () => loadKeyFrom(ROOT);
 
-/**
- * Resolution order: a real environment variable wins, then an explicit
- * TYPESAFE_API_KEY_FILE, then `~/.jev-bridge/.env`, then a `.env` at the
- * package root (convenient when running from a clone). A file may hold
- * `TYPESAFE_API_KEY=…` or just the bare key on its own line.
- */
-export function loadKey() {
-  const fromEnv = process.env.TYPESAFE_API_KEY?.trim();
-  if (fromEnv) return fromEnv;
-
-  for (const path of [process.env.TYPESAFE_API_KEY_FILE, join(HOME, '.env'), join(ROOT, '.env')].filter(Boolean)) {
-    if (!existsSync(path)) continue;
-    const text = readFileSync(path, 'utf8');
-    const assigned = text.match(/^\s*(?:export\s+)?TYPESAFE_API_KEY\s*=\s*(.+)$/m);
-    const raw = assigned ? assigned[1] : text;
-    const key = raw.trim().replace(/^['"]|['"]$/g, '').trim();
-    if (key && !key.startsWith('#')) return key;
-  }
-  return null;
-}
-
-/* ── HTTP ────────────────────────────────────────────────────────────────── */
-
-/**
- * 429 and 529 are the documented back-off statuses; honour retry-after when
- * present. The response carries `attempts`, so a slow call can be told apart
- * from one that spent its time waiting out a rate limit.
- */
-async function request(path, init, retries = 3) {
-  let delay = 500;
-  for (let attempt = 0; ; attempt++) {
-    let res;
-    try {
-      res = await fetch(`${BASE}${path}`, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
-    } catch (err) {
-      if (attempt >= retries) throw err;
-      await sleep(delay);
-      delay *= 2;
-      continue;
-    }
-    if ((res.status === 429 || res.status === 529) && attempt < retries) {
-      const after = Number(res.headers.get('retry-after'));
-      await res.text().catch(() => {}); // drain so the socket is reusable
-      await sleep(Number.isFinite(after) && after > 0 ? after * 1000 : delay);
-      delay *= 2;
-      continue;
-    }
-    return Object.assign(res, { attempts: attempt + 1 });
-  }
-}
+/* ── transport ───────────────────────────────────────────────────────────── */
 
 /** The live transport: one POST to /systemone. Swapped for a fake in tests. */
 function liveTransport() {
-  return async (body) => {
+  return async (body, { signal, onRetry } = {}) => {
     const key = loadKey();
     if (!key) {
       throw new Error(`No TypeSafe API key. Set TYPESAFE_API_KEY, or write it to ${join(HOME, '.env')} (chmod 600).`);
     }
-    const res = await request('/systemone', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body,
-    });
-    return { status: res.status, text: await res.text(), attempts: res.attempts };
+    return request('/systemone', { method: 'POST', body, key, signal, onRetry, userAgent: USER_AGENT });
   };
 }
 
-/** Turns a non-2xx into a sentence that names the remedy rather than the status alone. */
-function describeFailure(status, body) {
-  const detail = typeof body === 'string' ? body.slice(0, 600) : JSON.stringify(body).slice(0, 600);
-  const remedy = {
-    401: `The API key was missing or rejected. Check TYPESAFE_API_KEY, or ${join(HOME, '.env')}.`,
-    403: 'The API key is not permitted to use this model or endpoint.',
-    404: `No such endpoint at ${BASE}. Check TYPESAFE_API_URL.`,
-    422: 'The request body failed validation. The detail below names the offending field.',
-    429: 'Rate limited, and the retries were also rate limited. Back off and try again.',
-    529: 'TypeSafe is overloaded, and the retries also failed. Try again shortly.',
-  }[status];
-  return `TypeSafe API returned ${status}.${remedy ? ` ${remedy}` : ''}\n\n${detail}`;
+/** GET /v1/models, shaped as the API documents it: `{ models: [{ name, description, release_date }] }`. */
+async function listModels({ signal } = {}) {
+  const key = loadKey();
+  if (!key) throw new Error(`No TypeSafe API key. Set TYPESAFE_API_KEY, or write it to ${join(HOME, '.env')} (chmod 600).`);
+  const res = await request('/models', { key, signal, userAgent: USER_AGENT });
+  if (res.status !== 200) throw new Error(describeFailure(res.status, res.text, res.requestId));
+  const body = JSON.parse(res.text);
+  return { models: Array.isArray(body?.models) ? body.models : [] };
 }
 
 /* ── validation ──────────────────────────────────────────────────────────── */
 
+const isTextish = (v) => typeof v === 'string' || (v !== null && typeof v === 'object');
+const QUESTION_FIELDS = ['type', 'instructions', 'criteria'];
+const ASK_ARGS = ['state', 'questions', 'model', 'cache'];
+
 /**
  * Checked here rather than left to the API so a malformed question costs no
- * round trip and names itself. Mirrors the contract in docs.typesafe.ai/api.
+ * round trip and names itself. Mirrors the request body in docs.typesafe.ai/api:
+ * instructions and criteria entries are `string | object | array`; a choice has
+ * at most 255 options; a score has 2 to 10 levels in an ordered array.
  */
 export function validateQuestions(questions) {
   if (!questions || typeof questions !== 'object' || Array.isArray(questions)) {
@@ -149,12 +102,15 @@ export function validateQuestions(questions) {
     const q = questions[id];
     const at = `questions["${id}"]`;
     if (!q || typeof q !== 'object' || Array.isArray(q)) return `${at} must be an object.`;
+    const unknown = Object.keys(q).find((k) => !QUESTION_FIELDS.includes(k));
+    if (unknown) return `${at} has an unknown field "${unknown}". A question has only type, instructions and criteria.`;
     if (!['noul', 'choice', 'score'].includes(q.type)) {
       return `${at}.type must be "noul", "choice" or "score" (got ${JSON.stringify(q.type)}).`;
     }
     if (q.instructions === undefined || q.instructions === null || q.instructions === '') {
       return `${at}.instructions is required.`;
     }
+    if (!isTextish(q.instructions)) return `${at}.instructions must be a string, an object or an array.`;
     if (q.type === 'choice') {
       const c = q.criteria;
       if (!c || typeof c !== 'object' || Array.isArray(c)) {
@@ -163,6 +119,8 @@ export function validateQuestions(questions) {
       const n = Object.keys(c).length;
       if (n < 2) return `${at}.criteria needs at least 2 options.`;
       if (n > 255) return `${at}.criteria allows at most 255 options (got ${n}).`;
+      const bad = Object.keys(c).find((k) => c[k] !== null && !isTextish(c[k]));
+      if (bad !== undefined) return `${at}.criteria["${bad}"] must be a string, an object, an array or null.`;
     }
     if (q.type === 'score') {
       if (!Array.isArray(q.criteria)) {
@@ -170,15 +128,32 @@ export function validateQuestions(questions) {
       }
       if (q.criteria.length < 2) return `${at}.criteria needs at least 2 levels.`;
       if (q.criteria.length > 10) return `${at}.criteria allows at most 10 levels (got ${q.criteria.length}).`;
+      const bad = q.criteria.findIndex((level) => !isTextish(level) || level === '');
+      if (bad !== -1) return `${at}.criteria[${bad}] must be a non-empty string, an object or an array.`;
     }
     if (q.type === 'noul' && q.criteria !== undefined) {
       const c = q.criteria;
       if (!c || typeof c !== 'object' || Array.isArray(c)) {
         return `${at}.criteria for a noul must be an object with "true" and/or "false" keys.`;
       }
+      const key = Object.keys(c).find((k) => k !== 'true' && k !== 'false');
+      if (key !== undefined) return `${at}.criteria for a noul takes only "true" and "false" (got "${key}").`;
     }
   }
   return null;
+}
+
+/** The whole jev_ask argument object, before anything is looked up or sent. */
+export function validateAsk(args) {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return 'arguments must be an object with state and questions.';
+  const unknown = Object.keys(args).find((k) => !ASK_ARGS.includes(k));
+  if (unknown) return `Unknown argument "${unknown}". jev_ask takes ${ASK_ARGS.join(', ')}.`;
+  const { state, model, cache } = args;
+  if (state === undefined || state === null) return '`state` is required: a string, a JSON object or an array.';
+  if (!isTextish(state)) return '`state` must be a string, a JSON object or an array (text only).';
+  if (model !== undefined && (typeof model !== 'string' || !model.trim())) return '`model` must be a model name such as "jev-latest".';
+  if (cache !== undefined && typeof cache !== 'boolean') return '`cache` must be true or false.';
+  return validateQuestions(args.questions);
 }
 
 /* ── the one operation ───────────────────────────────────────────────────── */
@@ -190,16 +165,16 @@ export function validateQuestions(questions) {
  * spending tokens. An error is never cached: a 529 today must not become a
  * week of stored failure.
  *
- * Every outcome — hit, answer, rejection, a network that never answered — is
- * recorded twice: in the usage log, and in the history a reviewer reads later.
- * Both are only queued here; the store writes them after this answer has gone
- * back, so recording costs the caller nothing it can measure.
+ * Every outcome — hit, answer, rejection, a network that never answered, a
+ * client that cancelled — is recorded twice: in the usage log, and in the
+ * history a reviewer reads later. Both are only queued here; the store writes
+ * them after this answer has gone back, so recording costs the caller nothing
+ * it can measure.
  */
-export async function askJev(args, { store, transport, now = Date.now, usdPerMtok = USD_PER_MTOK, client = null }) {
-  const { state, questions, model = DEFAULT_MODEL, cache = true } = args ?? {};
-  if (state === undefined || state === null) throw new Error('`state` is required.');
-  const bad = validateQuestions(questions);
+export async function askJev(args, { store, transport, now = Date.now, usdPerMtok = USD_PER_MTOK, client = null, signal, progress }) {
+  const bad = validateAsk(args);
   if (bad) throw new Error(bad);
+  const { state, questions, model = DEFAULT_MODEL, cache = true } = args;
 
   const ts = now();
   const clock = performance.now();
@@ -224,17 +199,20 @@ export async function askJev(args, { store, transport, now = Date.now, usdPerMto
     }
   }
 
+  progress?.(`Asking ${model} ${count} question${count === 1 ? '' : 's'}`);
+  const onRetry = ({ retry, of, status, error, waitMs }) =>
+    progress?.(`TypeSafe ${status ? `returned ${status}` : `failed (${error})`}; retry ${retry} of ${of} in ${(waitMs / 1000).toFixed(1)} s`);
   let res;
   try {
-    res = await transport(JSON.stringify({ state, model, questions }));
+    res = await transport(JSON.stringify({ state, model, questions }), { signal, onRetry });
   } catch (err) {
-    // A timeout or a refused connection is the slowest outcome of all, so it is
-    // recorded too — as status 0, since no HTTP status ever arrived.
+    // A timeout, a refused connection or a cancellation is recorded too — as
+    // status 0, since no HTTP status ever arrived.
     record({ cached: 0, latency_ms: took(), status: 0, error: String(err?.message || err) });
     throw err;
   }
   if (res.status !== 200) {
-    const failure = describeFailure(res.status, res.text);
+    const failure = describeFailure(res.status, res.text, res.requestId);
     record({ cached: 0, latency_ms: took(), status: res.status, attempts: res.attempts, error: failure });
     throw new Error(failure);
   }
@@ -247,7 +225,9 @@ export async function askJev(args, { store, transport, now = Date.now, usdPerMto
   const latency = took();
   const id = record({ resolved_model: body.model, cached: 0, input_tokens: input, output_tokens: body.usage?.output_tokens ?? 0,
     latency_ms: latency, cost_usd: cost, status: 200, attempts: res.attempts, answers: body.answers });
-  return { ...body, bridge: bridge({ cached: false, latency_ms: latency, cost_usd: cost }, id) };
+  const facts = { cached: false, latency_ms: latency, cost_usd: cost, ...(res.attempts && { attempts: res.attempts }),
+    ...(res.requestId && { request_id: res.requestId }) };
+  return { ...body, bridge: bridge(facts, id) };
 }
 
 /**
@@ -273,276 +253,192 @@ function rebuildAnswers(questions, stored) {
   return out;
 }
 
-/* ── tools ───────────────────────────────────────────────────────────────── */
+/* ── MCP methods ─────────────────────────────────────────────────────────── */
 
-const ANSWER_SCHEMA = {
-  type: 'object',
-  properties: { type: { type: 'string', enum: ['noul', 'choice', 'score'] } },
-  required: ['type'],
+const HISTORY_URI = /^jev:\/\/history\/([^/?#]+)$/;
+const subscribable = (uri) => uri === 'jev://usage' || uri === 'jev://history' || HISTORY_URI.test(uri);
+
+const json = (value) => JSON.stringify(value);
+const structured = (result) => ({ content: [{ type: 'text', text: json(result) }], structuredContent: result });
+const intArg = (value, fallback, name, [min, max]) => {
+  if (value === undefined || value === null || value === '') return fallback;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < min || n > max) throw new McpError(ERRORS.INVALID_PARAMS, `${name} must be a whole number from ${min} to ${max}.`);
+  return n;
 };
+const fractionArg = (value, fallback, name) => {
+  if (value === undefined || value === null || value === '') return fallback;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0 || n > 1) throw new McpError(ERRORS.INVALID_PARAMS, `${name} must be a number from 0 to 1.`);
+  return n;
+};
+/** A resource that is not there: -32602 from 2026-07-28, -32002 before it. */
+const notFound = (uri, ctx) => new McpError(ctx.era === 'modern' ? ERRORS.INVALID_PARAMS : -32002, `Resource not found: ${uri}`, { uri });
+const matching = (values, prefix) => {
+  const hits = values.filter((v) => v.startsWith(prefix ?? ''));
+  return { completion: { values: hits.slice(0, 100), total: hits.length, hasMore: hits.length > 100 } };
+};
+/** resource_link arrived in 2025-06-18; older clients would not know the content type. */
+const linksAllowed = (ctx) => ctx.era === 'modern' || ctx.version >= '2025-06-18';
 
-const TOOLS = [
-  {
-    name: 'jev_ask',
-    title: 'Ask Jev (TypeSafe System One)',
-    description:
-      'Evaluate a `state` against typed questions and get calibrated, structured answers back. ' +
-      'Jev returns judgments and probabilities, not generated prose or reasoning — use it where code needs ' +
-      'semantic understanding (routing, ranking, extraction, verification, classification).\n\n' +
-      'Every question is one of three primitives:\n' +
-      '  • noul   — a yes/no question. Returns `noul`: probability of yes (0..1). No separate confidence. ' +
-      'Use one noul per label when several labels may apply at once. A value near 0.5 means yes and no are ' +
-      'similarly likely, NOT "medium intensity".\n' +
-      '  • choice — picks one option from a set. `criteria` is an object mapping option -> description ' +
-      '(null for no description), 2..255 options. Returns the winning `choice`, the full `probabilities` map, ' +
-      'and `confidence`. Include a no-match option when nothing may fit.\n' +
-      '  • score  — rates along a rubric. `criteria` is an ORDERED ARRAY of 2..10 concrete level descriptions, ' +
-      'lowest first. Returns a probability-weighted `score` (can land between levels), a `legend`, ' +
-      '`probabilities` and `confidence`.\n\n' +
-      'Ask every INDEPENDENT question about the same state in ONE call — they run in parallel against a single ' +
-      'ingest of the state, which is cheaper and faster than separate calls. Make a second call only when an ' +
-      'answer is needed to fetch new evidence or decide the next options. Question ids are for your code and ' +
-      'are NOT sent to the model, so put the full meaning in `instructions`. Reference nested state with ' +
-      'backticked paths such as `ticket.messages[0].text`. Typed output guarantees the interface, not truth.\n\n' +
-      'Identical requests are answered from a local cache at no cost; `bridge.cached` says which happened, and ' +
-      '`bridge.cost_usd` is what THIS call cost. On a cache hit `usage` describes the original call. ' +
-      '`bridge.call_id` names this call in jev_history; pass it to jev_review once you learn whether the answer was right.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        state: {
-          description:
-            'The content to evaluate: a plain string for text, or a JSON object/array for structured data ' +
-            '(chat logs, records, application state). Named fields help when the context has several parts. ' +
-            'Text only — pre-process images, audio or binaries into text first.',
-        },
-        questions: {
-          type: 'object',
-          description: 'A map of your own question id -> question object. Answers come back under the same ids.',
-          minProperties: 1,
-          additionalProperties: {
-            type: 'object',
-            properties: {
-              type: { type: 'string', enum: ['noul', 'choice', 'score'] },
-              instructions: {
-                description:
-                  'The judgment to make. A string, or an object holding the question in one field and the data ' +
-                  'it refers to in others (refer to those fields by name in backticks).',
-              },
-              criteria: {
-                description:
-                  'noul: optional object with "true"/"false" meanings. choice: REQUIRED object of option -> ' +
-                  'description. score: REQUIRED ordered array of level descriptions, lowest first.',
-              },
-            },
-            required: ['type', 'instructions'],
-          },
-        },
-        model: {
-          type: 'string',
-          description: `Model or alias. Defaults to "${DEFAULT_MODEL}". Aliases: jev-latest, jev-preview. Pin a versioned id (e.g. jev-1.13.0) if you have tuned thresholds against it.`,
-        },
-        cache: {
-          type: 'boolean',
-          description: 'Default true. Set false to force a live call; the fresh answer then replaces the stored one.',
-        },
-      },
-      required: ['state', 'questions'],
-    },
-    outputSchema: {
-      type: 'object',
-      properties: {
-        model: { type: 'string', description: 'The versioned model that answered, e.g. jev-1.13.0.' },
-        answers: { type: 'object', additionalProperties: ANSWER_SCHEMA },
-        usage: {
-          type: 'object',
-          properties: { input_tokens: { type: 'integer' }, output_tokens: { type: 'integer' } },
-        },
-        bridge: {
-          type: 'object',
-          properties: {
-            cached: { type: 'boolean' },
-            latency_ms: { type: 'number' },
-            cost_usd: { type: 'number' },
-            call_id: { type: 'string', description: 'This call in jev_history. Absent when history is off.' },
-          },
-          required: ['cached'],
-        },
-      },
-      required: ['model', 'answers', 'bridge'],
-    },
-  },
-  {
-    name: 'jev_usage',
-    title: 'What Jev has been asked, and what it cost',
-    description:
-      'Report calls, cache hits, tokens and spend over the last N days, from the bridge\'s local log. ' +
-      'Use it to see what a workflow costs before scaling it up, or to check the cache is earning its place.',
-    inputSchema: {
-      type: 'object',
-      properties: { days: { type: 'integer', minimum: 1, maximum: 365, description: 'Window in days. Default 7.' } },
-      additionalProperties: false,
-    },
-    outputSchema: {
-      type: 'object',
-      properties: {
-        window_days: { type: 'integer' },
-        calls: { type: 'integer' },
-        live_calls: { type: 'integer' },
-        cache_hits: { type: 'integer' },
-        hit_rate: { type: 'number' },
-        errors: { type: 'integer' },
-        input_tokens: { type: 'integer' },
-        output_tokens: { type: 'integer' },
-        cost_usd: { type: 'number' },
-        saved_input_tokens: { type: 'integer' },
-        saved_usd: { type: 'number' },
-        avg_live_latency_ms: { type: ['number', 'null'] },
-        by_day: { type: 'array', items: { type: 'object' } },
-        models: { type: 'array', items: { type: 'object' } },
-        cache: { type: 'object' },
-        store: { type: 'string' },
-      },
-      required: ['calls', 'cache_hits', 'cost_usd'],
-    },
-  },
-  {
-    name: 'jev_history',
-    title: 'Past Jev calls: speed, cost and whether they were right',
-    description:
-      'Look back at earlier jev_ask calls, from the bridge\'s local history. Without `id`: stats for the window ' +
-      '(latency percentiles, cache hits, retries, live calls that re-sent a state and should have been batched, ' +
-      'reviewed accuracy) and the matching calls, each with the start of its state and its answers on one line. ' +
-      'With `id`: that call in full — state, questions, answers, timing, cost and review. ' +
-      'Use filter "uncertain" to see the calls Jev was least sure of, and "slow" for the slowest.',
-    annotations: { readOnlyHint: true },
-    inputSchema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', description: 'A `bridge.call_id`, or an id from this list. Returns that call in full.' },
-        days: { type: 'integer', minimum: 1, maximum: 3650, description: 'Window in days. Default 7.' },
-        filter: { type: 'string', enum: FILTER_NAMES, description: 'Which calls to list. Default "all", newest first.' },
-        below: { type: 'number', minimum: 0, maximum: 1, description: 'The certainty cut for "uncertain". Default 0.6.' },
-        q: { type: 'string', description: 'Only calls whose state or answers contain this text.' },
-        limit: { type: 'integer', minimum: 1, maximum: 200, description: 'Most calls to list. Default 20.' },
-      },
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'jev_review',
-    title: 'Record whether a Jev answer was right',
-    description:
-      'Mark a past call correct, partial or incorrect once the truth is known — the user corrected it, or the ' +
-      'evidence says otherwise. `expected` records what the answers should have been, by question id; `note` says ' +
-      'why. `verdict: null` withdraws a review. Reviewed calls are never pruned, and give jev_history its accuracy.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', description: 'The `bridge.call_id` of the call being judged.' },
-        verdict: { type: ['string', 'null'], enum: [...VERDICTS, null] },
-        note: { type: 'string', description: 'Why, in a sentence.' },
-        expected: { type: 'object', description: 'Question id -> the answer it should have been, e.g. {"department": "technical"}.' },
-      },
-      required: ['id', 'verdict'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'jev_models',
-    title: 'List TypeSafe models',
-    description:
-      'List the model names this account may send in the `model` field, with a description and release date. ' +
-      'Lists aliases; versioned ids are accepted whether or not they appear here. Also a cheap credential check.',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-  },
-];
+function historyOf(store, args) {
+  const filter = args?.filter ?? 'all';
+  if (!FILTER_NAMES.includes(filter)) throw new Error(`filter must be one of ${FILTER_NAMES.join(', ')} (got ${JSON.stringify(filter)}).`);
+  return historyReport(store, { days: args?.days ?? 7, filter, below: args?.below ?? 0.6, q: args?.q,
+    limit: Math.min(Math.max(1, args?.limit ?? 20), 200), now: Date.now() });
+}
 
-/* ── JSON-RPC plumbing ───────────────────────────────────────────────────── */
-
-const missing = (id) => { throw new Error(`No call "${id}" in the history. It may have been pruned, or history may be off.`); };
-
-const send = (msg) => process.stdout.write(JSON.stringify(msg) + '\n');
-const ok = (id, result) => send({ jsonrpc: '2.0', id, result });
-const fail = (id, code, message) => send({ jsonrpc: '2.0', id, error: { code, message } });
-
-function makeHandler(deps) {
-  return async function handle(msg) {
-    const { id, method, params } = msg;
-    const isNotification = id === undefined || id === null;
-
-    switch (method) {
-      case 'initialize': {
-        const requested = params?.protocolVersion;
-        deps.client = typeof params?.clientInfo?.name === 'string' ? params.clientInfo.name.slice(0, 100) : null;
-        return ok(id, {
-          protocolVersion: typeof requested === 'string' ? requested : FALLBACK_PROTOCOL,
-          capabilities: { tools: { listChanged: false } },
-          serverInfo: SERVER,
-          instructions:
-            'TypeSafe System One (Jev). Use jev_ask for calibrated typed judgments over a state. ' +
-            'Batch all independent questions into a single jev_ask call. jev_usage reports what it has cost; ' +
-            'jev_history shows past calls, and jev_review records whether an answer turned out right.',
-        });
+/**
+ * The tools, resources, prompts and completions, bound to one store. Returned
+ * as an MCP method table so the protocol layer stays free of Jev.
+ */
+export function makeMethods(deps, notify = () => {}) {
+  const tools = {
+    async jev_ask(args, ctx) {
+      const result = await askJev(args, { ...deps, client: ctx.client, signal: ctx.signal, progress: ctx.progress });
+      notify('jev://usage');
+      notify('jev://history');
+      const out = structured(result);
+      const id = result.bridge.call_id;
+      if (id && linksAllowed(ctx)) {
+        out.content.push({ type: 'resource_link', uri: `jev://history/${id}`, name: `call ${id}`,
+          description: 'This call in the history: state, questions, answers, timing, review.', mimeType: 'application/json' });
       }
-      case 'notifications/initialized':
-      case 'notifications/cancelled':
-        return;
-      case 'ping':
-        return ok(id, {});
-      case 'tools/list':
-        return ok(id, { tools: TOOLS });
-      case 'tools/call': {
-        try {
-          const { name, arguments: args } = params ?? {};
-          if (name === 'jev_ask') {
-            const result = await askJev(args, deps);
-            return ok(id, { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result });
-          }
-          if (name === 'jev_usage') {
-            const result = deps.store.summary({ days: args?.days ?? 7, now: Date.now() });
-            return ok(id, { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result });
-          }
-          if (name === 'jev_history') {
-            const result = args?.id
-              ? deps.store.getHistory(args.id) ?? missing(args.id)
-              : historyReport(deps.store, { days: args?.days ?? 7, filter: args?.filter ?? 'all', below: args?.below ?? 0.6,
-                q: args?.q, limit: Math.min(Math.max(1, args?.limit ?? 20), 200), now: Date.now() });
-            return ok(id, { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result });
-          }
-          if (name === 'jev_review') {
-            const call = reviewCall(deps.store, args?.id, { verdict: args?.verdict ?? null, note: args?.note ?? null,
-              expected: args?.expected ?? null });
-            // Echo the review, not the whole call: the caller already has the state.
-            const result = { id: call.id, verdict: call.verdict, note: call.note, expected: call.expected, reviewed_at: call.reviewed_at };
-            return ok(id, { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result });
-          }
-          if (name === 'jev_models') {
-            const key = loadKey();
-            if (!key) throw new Error('No TypeSafe API key.');
-            const res = await request('/models', { method: 'GET', headers: { Authorization: `Bearer ${key}` } });
-            const text = await res.text();
-            if (!res.ok) throw new Error(describeFailure(res.status, text));
-            return ok(id, { content: [{ type: 'text', text }] });
-          }
-          throw new Error(`Unknown tool: ${name}`);
-        } catch (err) {
-          // Reported in-band so the model can read and react to it, rather than
-          // as a protocol error it never sees.
-          return ok(id, { content: [{ type: 'text', text: String(err?.message || err) }], isError: true });
-        }
+      return out;
+    },
+    async jev_usage(args) {
+      return structured(deps.store.summary({ days: args?.days ?? 7, now: Date.now() }));
+    },
+    async jev_history(args) {
+      if (args?.id) {
+        const call = deps.store.getHistory(args.id);
+        if (!call) throw new Error(`No call "${args.id}" in the history. It may have been pruned, or history may be off.`);
+        return structured(call);
       }
-      default:
-        if (isNotification) return;
-        return fail(id, -32601, `Method not found: ${method}`);
-    }
+      return structured(historyOf(deps.store, args));
+    },
+    async jev_review(args) {
+      const call = reviewCall(deps.store, args?.id, { verdict: args?.verdict ?? null, note: args?.note ?? null, expected: args?.expected ?? null });
+      notify(`jev://history/${call.id}`);
+      notify('jev://history');
+      // Echo the review, not the whole call: the caller already has the state.
+      return structured({ id: call.id, verdict: call.verdict, note: call.note, expected: call.expected, reviewed_at: call.reviewed_at });
+    },
+    async jev_models(_args, ctx) {
+      return structured(await listModels({ signal: ctx.signal }));
+    },
+  };
+
+  const reads = {
+    [GUIDE_URI]: () => ({ mimeType: 'text/markdown', text: GUIDE }),
+    'jev://models': async (ctx) => ({ mimeType: 'application/json', text: json(await listModels({ signal: ctx.signal })) }),
+    'jev://usage': () => ({ mimeType: 'application/json', text: json(deps.store.summary({ days: 7, now: Date.now() })) }),
+    'jev://history': () => ({ mimeType: 'application/json', text: json(historyOf(deps.store, {})) }),
+  };
+
+  const prompts = {
+    review_uncertain(args) {
+      const days = intArg(args.days, 7, 'days', [1, 3650]);
+      const below = fractionArg(args.below, 0.6, 'below');
+      return `Review the Jev calls from the last ${days} days that Jev was least sure of.\n\n` +
+        `1. Call jev_history with {"filter": "uncertain", "below": ${below}, "days": ${days}}.\n` +
+        '2. For each listed call, open it with jev_history {"id": "<id>"} and judge every answer against the state and ' +
+        'anything else you know. Do not guess: skip a call you cannot judge.\n' +
+        '3. Record each judgement with jev_review: verdict correct, partial or incorrect; `expected` with the answer ' +
+        'each wrong question should have given; a one-sentence `note`.\n' +
+        '4. Finish with a table of the calls reviewed, and say which questions look badly worded and how to fix them.';
+    },
+    cost_report(args) {
+      const days = intArg(args.days, 7, 'days', [1, 3650]);
+      return `Report what Jev has cost over the last ${days} days, and how to spend less.\n\n` +
+        `1. Call jev_usage {"days": ${days}} and jev_history {"days": ${days}, "limit": 1} (its stats are all you need).\n` +
+        '2. Report: calls, live calls, cache hit rate, USD spent and saved by the cache, p50/p95 live latency, errors and retries.\n' +
+        '3. Name the savings: `efficiency.resent_state_calls` are live calls whose questions could have ridden in an ' +
+        'earlier call on the same state; a low `questions_per_live_call` means questions are being asked one at a time. ' +
+        'Say what to batch, in one short list.';
+    },
+    question_design() {
+      return 'Design the jev_ask request for the task in this conversation, using the guide below. Choose each ' +
+        'question\'s type by the answer needed, write complete instructions (ids are never sent to the model), give ' +
+        'choices a "none" option where nothing may fit, and put every independent question in one call. Show the ' +
+        'request, then send it unless the user asked to see it first.\n\n' + GUIDE;
+    },
+  };
+
+  return {
+    'tools/list': () => ({ tools: TOOLS }),
+    async 'tools/call'(params, ctx) {
+      const { name, arguments: args = {} } = params;
+      const tool = tools[name];
+      if (!tool) throw new McpError(ERRORS.INVALID_PARAMS, `Unknown tool: ${name}. Tools: ${Object.keys(tools).join(', ')}.`);
+      if (args === null || typeof args !== 'object' || Array.isArray(args)) {
+        throw new McpError(ERRORS.INVALID_PARAMS, '`arguments` must be an object.');
+      }
+      try {
+        return await tool(args, ctx);
+      } catch (err) {
+        // Reported in-band so the model can read the reason and correct itself,
+        // as the spec asks for input and API errors.
+        return { content: [{ type: 'text', text: String(err?.message || err) }], isError: true };
+      }
+    },
+    'resources/list': () => ({ resources: RESOURCES.map(({ cache, ...r }) => r) }),
+    'resources/templates/list': () => ({ resourceTemplates: TEMPLATES }),
+    async 'resources/read'(params, ctx) {
+      const uri = params.uri;
+      if (typeof uri !== 'string') throw new McpError(ERRORS.INVALID_PARAMS, '`uri` must be a string.');
+      const fixed = RESOURCES.find((r) => r.uri === uri);
+      if (fixed) {
+        const body = await reads[uri](ctx);
+        return { contents: [{ uri, ...body }], ...fixed.cache };
+      }
+      const id = uri.match(HISTORY_URI)?.[1];
+      const call = id && deps.store.getHistory(decodeURIComponent(id));
+      if (!call) throw notFound(uri, ctx);
+      return { contents: [{ uri, mimeType: 'application/json', text: json(call) }], ttlMs: 0, cacheScope: 'private' };
+    },
+    'prompts/list': () => ({ prompts: PROMPTS }),
+    'prompts/get'(params) {
+      const prompt = PROMPTS.find((p) => p.name === params.name);
+      if (!prompt) throw new McpError(ERRORS.INVALID_PARAMS, `Unknown prompt: ${params.name}. Prompts: ${PROMPTS.map((p) => p.name).join(', ')}.`);
+      const text = prompts[prompt.name](params.arguments ?? {});
+      return { description: prompt.description, messages: [{ role: 'user', content: { type: 'text', text } }] };
+    },
+    'completion/complete'(params) {
+      const { ref, argument } = params;
+      const value = argument?.value ?? '';
+      if (ref?.type === 'ref/prompt') {
+        if (argument?.name === 'days') return matching(['1', '7', '14', '30', '90'], value);
+        if (argument?.name === 'below') return matching(['0.5', '0.6', '0.7', '0.8', '0.9'], value);
+      }
+      if (ref?.type === 'ref/resource' && ref.uri === TEMPLATES[0].uriTemplate && argument?.name === 'id') {
+        const ids = deps.store.listHistory({ since: Date.now() - 30 * 86_400_000 }).map((r) => r.id);
+        return matching(ids, value);
+      }
+      return matching([], value);
+    },
   };
 }
 
+export const CAPABILITIES = {
+  tools: { listChanged: false },
+  resources: { subscribe: true, listChanged: false },
+  prompts: { listChanged: false },
+  completions: {},
+};
+
+/** One MCP server over a store: a protocol instance whose replies go to `write`. */
+export function createServer(deps, write) {
+  let protocol = null;
+  const methods = makeMethods(deps, (uri) => protocol?.resourceUpdated(uri));
+  protocol = createProtocol({ serverInfo: SERVER_INFO, instructions: INSTRUCTIONS, capabilities: CAPABILITIES, methods, subscribable, write });
+  return protocol;
+}
+
 function serve(deps) {
-  const handle = makeHandler(deps);
+  const protocol = createServer(deps, (msg) => process.stdout.write(JSON.stringify(msg) + '\n'));
   let buffer = '';
-  // In-flight tool calls outlive the stdin stream when a client closes its pipe
+  // In-flight requests outlive the stdin stream when a client closes its pipe
   // immediately after writing. Exiting on 'end' without draining them truncates
   // the reply, and the caller sees a silent hang rather than an answer.
   const inFlight = new Set();
@@ -567,18 +463,17 @@ function serve(deps) {
       try {
         msg = JSON.parse(line);
       } catch {
-        fail(null, -32700, 'Parse error');
+        process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: ERRORS.PARSE, message: 'Parse error' } }) + '\n');
         continue;
       }
-      track(
-        Promise.resolve(handle(msg)).catch((err) => {
-          log('handler error:', err?.stack || err);
-          if (msg?.id !== undefined && msg?.id !== null) fail(msg.id, -32603, String(err?.message || err));
-        }),
-      );
+      track(Promise.resolve(protocol.receive(msg)).catch((err) => log('handler error:', err?.stack || err)));
     }
   });
-  process.stdin.on('end', () => { stdinClosed = true; exitWhenDrained(); });
+  process.stdin.on('end', () => {
+    stdinClosed = true;
+    protocol.closeSubscriptions();
+    exitWhenDrained();
+  });
 }
 
 /* ── entry ───────────────────────────────────────────────────────────────── */
@@ -626,7 +521,7 @@ const HELP = `jev-bridge ${PKG.version} — an MCP server for TypeSafe's Jev
 
 Usage:
   jev-bridge                 run as an MCP server over stdio (what an MCP client does)
-  jev-bridge --selftest      call the live API once, bypassing the cache
+  jev-bridge --selftest      list the models, then call the live API once, bypassing the cache
   jev-bridge --stats [days]  report calls, cache hits, tokens and cost (default 7 days)
   jev-bridge --ui [port]     open the call-history dashboard in a browser (--no-open to only print its address)
   jev-bridge --history [days] [filter]
@@ -637,26 +532,27 @@ Usage:
   jev-bridge --help          print this
 
 Key:     TYPESAFE_API_KEY, or TYPESAFE_API_KEY_FILE, or ${join(HOME, '.env')}
+API:     ${BASE} · model ${DEFAULT_MODEL} · ${RETRY.timeoutMs} ms per attempt, ${RETRY.maxRetries} retries
 Data:    ${DB_PATH}
 History: ${HISTORY} (TYPESAFE_HISTORY=full|meta|off), ${HISTORY_DAYS} days
 Docs:    https://github.com/lhviet/jev-bridge#readme`;
 
 async function main() {
-  const argv0 = process.argv.slice(2);
-  if (argv0.includes('--help') || argv0.includes('-h')) { process.stdout.write(HELP + '\n'); process.exit(0); }
-  if (argv0.includes('--version') || argv0.includes('-v')) { process.stdout.write(PKG.version + '\n'); process.exit(0); }
+  const argv = process.argv.slice(2);
+  if (argv.includes('--help') || argv.includes('-h')) { process.stdout.write(HELP + '\n'); process.exit(0); }
+  if (argv.includes('--version') || argv.includes('-v')) { process.stdout.write(PKG.version + '\n'); process.exit(0); }
 
   const store = await makeStore();
   // By default a signal ends the process without an 'exit' event, which would
   // drop the few records still waiting to be written. Exiting routes through it.
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.once(signal, () => process.exit(0));
   const deps = { store, transport: liveTransport() };
-  const argv = process.argv.slice(2);
 
   if (argv.includes('--selftest')) {
     const key = loadKey();
     process.stderr.write(`key: ${key ? `loaded (${key.length} chars, ${key.slice(0, 8)}…)` : 'MISSING'}\n`);
     if (!key) process.exit(1);
+    process.stderr.write(`models: ${(await listModels()).models.map((m) => m.name).join(', ')}\n`);
     const out = await askJev({
       state: 'Help! My payouts have been failing for 3 days.',
       cache: false, // a self-test must reach the API, not the cache

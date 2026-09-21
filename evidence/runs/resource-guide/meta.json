@@ -1,0 +1,31 @@
+{
+  "scenario": "resource-guide",
+  "trial": null,
+  "about": "The jev://guide resource read (resources/read), then its \"select, don't generate\" rule applied through jev_ask.",
+  "started": "2026-09-21T05:28:13.926Z",
+  "finished": "2026-09-21T05:28:33.044Z",
+  "exit_code": 0,
+  "model": "sonnet",
+  "env": {},
+  "command": [
+    "claude",
+    "-p",
+    "--model",
+    "sonnet",
+    "--strict-mcp-config",
+    "--mcp-config",
+    "<workdir>/resource-guide/mcp.json",
+    "--allowedTools",
+    "mcp__jev",
+    "ListMcpResourcesTool",
+    "ReadMcpResourceTool",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--no-session-persistence",
+    "--max-budget-usd",
+    "1",
+    "Read @jev:jev://guide, then have Jev find the delivery date in: \"Ordered 3 Jan, dispatched 5 Jan, and it should reach you by 11 Jan. Returns close 25 Jan.\" Tell me which rule from the guide you followed."
+  ],
+  "stderr": null
+}

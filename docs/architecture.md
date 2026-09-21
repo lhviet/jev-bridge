@@ -16,7 +16,7 @@ whole thing is tested.
 
 ## Components
 
-Four modules and a page, no dependencies. Colours and shapes follow the
+Six modules and a page, no dependencies. Colours and shapes follow the
 [key in the README](../README.md#reading-the-diagrams); a **dashed grey** box is
 not persisted, and **teal** marks a claim proven by a test.
 
@@ -24,11 +24,13 @@ not persisted, and **teal** marks a claim proven by a test.
 flowchart TB
   CLIENT("MCP client")
   subgraph SERVER["src/server.mjs"]
-    RPC["serve · makeHandler<br/>JSON-RPC over stdio"]
+    METHODS["makeMethods<br/>tools · resources · prompts · completions"]
     CLI["main<br/>the command line"]
     ASK["askJev<br/>validate · look up · call · record"]
-    NET["request · loadKey<br/>Bearer auth, retries on 429 / 529"]
   end
+  MCP["src/mcp.mjs<br/>JSON-RPC, both protocol eras,<br/>cancellation, progress, subscriptions"]
+  CAT["src/catalog.mjs<br/>instructions, schemas, guide, prompts"]
+  NET["src/typesafe.mjs<br/>key · SDK retry policy · errors"]
   subgraph STORE["src/store.mjs"]
     direction TB
     FP["cacheKey<br/>canonical JSON, ids excluded"]
@@ -40,8 +42,10 @@ flowchart TB
   UI["src/ui.mjs + ui.html<br/>dashboard, its own process"]
   API(["TypeSafe API"])
 
-  CLIENT --> RPC
-  RPC --> ASK
+  CLIENT --> MCP
+  MCP --> METHODS
+  CAT --> METHODS
+  METHODS --> ASK
   CLI --> ASK
   ASK --> NET
   ASK --> STORE
@@ -49,7 +53,7 @@ flowchart TB
   FP -- "key" --> SQL
   FP -. "key" .-> MEM
   WB --> SQL
-  RPC -- "jev_history · jev_review" --> HIST
+  METHODS -- "jev_history · jev_review" --> HIST
   UI --> HIST
   HIST --> STORE
 
@@ -59,22 +63,22 @@ flowchart TB
   classDef ephemeral fill:#f8fafc,stroke:#94a3b8,color:#334155,stroke-dasharray:5 3
   classDef external fill:#ffedd5,stroke:#ea580c,color:#7c2d12
   class CLIENT client
-  class RPC,CLI,ASK,NET,FP,WB,HIST,UI bridge
+  class METHODS,CLI,ASK,MCP,CAT,NET,FP,WB,HIST,UI bridge
   class SQL store
   class MEM ephemeral
   class API external
   style SERVER fill:#2563eb12,stroke:#2563eb,stroke-dasharray:6 4
   style STORE fill:#16a34a12,stroke:#16a34a,stroke-dasharray:6 4
   linkStyle 0 stroke:#7c3aed
-  linkStyle 4 stroke:#16a34a,stroke-width:2px
-  linkStyle 5 stroke:#ea580c,stroke-width:2px
-  linkStyle 6 stroke:#16a34a
-  linkStyle 7 stroke:#94a3b8
+  linkStyle 7 stroke:#ea580c,stroke-width:2px
 ```
 
 | Module | Responsibility |
 | --- | --- |
-| `src/server.mjs` | The MCP protocol, the five tools, question validation, the HTTP client with retries, key loading, and the command line. |
+| `src/mcp.mjs` | The protocol, knowing nothing of Jev: which revision a message speaks (a request with `_meta` naming a version is 2026-07-28 and stateless; `initialize` starts a 2025-11-25-or-earlier session), `server/discover`, result shaping (`resultType`, `serverInfo`, cache hints), error codes, cancellation, progress, and resource subscriptions in both eras. |
+| `src/catalog.mjs` | What a client is told: the server instructions, the five tools with their schemas and hints, the question-design guide, the resources and the prompts. Written to Claude Code's limits: 2 KB per description, schemas valid under JSON Schema 2020-12, no root-level combinators. |
+| `src/typesafe.mjs` | The TypeSafe HTTP API: base URL and model from the SDKs' environment names, the key, one request with the SDKs' retry policy (408, 429, 5xx; two retries; `Retry-After`), per-attempt timeouts, cancellation, and error messages that name a remedy and the request id. |
+| `src/server.mjs` | `askJev` and question validation; the MCP methods bound to a store; the command line. |
 | `src/store.mjs` | Cache keys, the write-behind queue, the SQLite store, and an in-memory store with the same interface for Node versions that lack `node:sqlite`. |
 | `src/history.mjs` | Pure functions over history rows: certainty, filters, latency percentiles, batching and accuracy stats, and review validation. The MCP tools, the CLI and the dashboard all use it, so they cannot disagree. |
 | `src/ui.mjs`, `src/ui.html` | The dashboard: a token-guarded server on 127.0.0.1 and one self-contained page. |
@@ -288,7 +292,7 @@ served, instead of silently outliving the release.
 | Question | Where the answer comes from |
 | --- | --- |
 | Was it fast? | `latency_ms` per call; nearest-rank p50, p95 and max over live calls, so every figure is a latency that happened |
-| Was time lost to rate limits? | `attempts`: more than one means the call waited out a 429 or 529 |
+| Was time lost to rate limits? | `attempts`: more than one means the call was retried after a 408, 429 or 5xx, a timeout or a dropped connection |
 | Was it cheap? | `input_tokens` and `cost_usd`, and the cache hit rate |
 | Was it batched? | *Re-sent states*: live calls whose state had already been sent live in the window. A forced refresh is deliberate, so it is not counted |
 | Did it fail? | `status`, which is `0` when no HTTP reply ever came. The usage log used to miss those entirely |
@@ -372,7 +376,7 @@ that wobble. Pass `"cache": false` when you are measuring rather than deciding.
 
 ## How it is tested
 
-95 tests on the built-in `node --test` runner — no test framework installed.
+162 tests on the built-in `node --test` runner — no test framework installed.
 
 - **Only the TypeSafe API is faked**, because it is external and billed.
   SQLite, the MCP protocol over a real child process, and two processes
@@ -383,6 +387,18 @@ that wobble. Pass `"cache": false` when you are measuring rather than deciding.
   SQLite suites skip and the fallback is what gets tested.
 - **The suite never touches a real key or a real home directory**: every server
   it starts gets `TYPESAFE_API_KEY`, `TYPESAFE_DB` and `JEV_BRIDGE_HOME`.
+- **The protocol is tested the way a client sees it**
+  (`test/protocol.test.mjs`): a real server process over stdio, both protocol
+  revisions, every method, every error code, cancellation mid-request,
+  progress during a retry, subscriptions opened and closed. Every tool result
+  is checked against the tool's own `outputSchema`, and the limits Claude Code
+  applies to what a server declares are checked too: 2 KB descriptions,
+  root-level combinators, property names.
+- **The TypeSafe client is tested against the SDKs' contract**
+  (`test/typesafe.test.mjs`): which statuses are retried, how many times,
+  `Retry-After` in seconds, as a date and as `retry-after-ms`, a timeout per
+  attempt, a refused connection, cancellation during a wait, the environment
+  variable names.
 
 A passing test proves nothing until it has been seen to fail. Each of these was
 checked by breaking the code on purpose and confirming a test noticed:
@@ -412,10 +428,33 @@ checked by breaking the code on purpose and confirming a test noticed:
 | Forced refreshes counted as re-sent states | ✅ |
 | An unknown verdict accepted | ✅ |
 | The dashboard skipping its Host check, or its token | ✅ |
+| 2026-07-28 results without `resultType` | ✅ |
+| `server/discover` missing | ✅ |
+| An unsupported protocol version accepted, or a request without `clientCapabilities` | ✅ |
+| Methods served outside their protocol revision | ✅ |
+| `initialize` echoing any version | ✅ |
+| Cache hints leaking into 2025-11-25 results (missed at first; a test was added) | ✅ |
+| A cancelled request still answered | ✅ |
+| Progress sent to a request that sent no token | ✅ |
+| A subscription acknowledged for a URI that never changes | ✅ |
+| An unknown tool reported as a tool result instead of `-32602` | ✅ |
+| A missing resource reported as `-32602` to a 2025-11-25 client | ✅ |
+| A `resource_link` sent to a 2024-11-05 client | ✅ |
+| Unknown question fields let through | ✅ |
+| A `jev_ask` result that no longer fits its `outputSchema` | ✅ |
+| A tool description over Claude Code's 2 KB cut-off | ✅ |
+| A 422 retried; three retries instead of two; `Retry-After` ignored | ✅ |
+| A cancellation that does not end the backoff wait | ✅ |
+| `TYPESAFE_BASE_URL` ignored | ✅ |
 
-Beyond the suite, jev-bridge was driven end to end from a real Claude Code
-session — which is how the question-id bug was found, and something no unit test
-had thought to ask.
+Beyond the suite, jev-bridge is driven end to end by real Claude Code sessions,
+recorded message by message ([evidence/](../evidence/README.md)). The first
+such session found the question-id bug; later ones found three places where
+what the server told the agent led it astray (see
+[What the recordings changed](../README.md#proven-with-claude-code)). Every
+recorded message, and a sweep of every method in both protocol revisions, is
+validated against the official MCP JSON Schema by
+[`evidence/validate-wire.mjs`](../evidence/validate-wire.mjs).
 
 ## Design decisions
 

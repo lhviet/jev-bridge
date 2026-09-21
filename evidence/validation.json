@@ -1,0 +1,396 @@
+{
+  "checked_at": "2026-09-21T05:44:35.848Z",
+  "validator": "ajv 8.20.0 (Ajv2020)",
+  "schemas": {
+    "2025-11-25": {
+      "url": "https://raw.githubusercontent.com/modelcontextprotocol/modelcontextprotocol/main/schema/2025-11-25/schema.json",
+      "sha256": "268a5f82ba70fd7e4b6dc4aa1e64f116f74b4d0edcb69dc046829c79dd4e97e7"
+    },
+    "2026-07-28": {
+      "url": "https://raw.githubusercontent.com/modelcontextprotocol/modelcontextprotocol/main/schema/2026-07-28/schema.json",
+      "sha256": "ef70b61f99b6d2e5e3b46863822eab08dff6a45bedc7a08914e0e5b133f40203"
+    }
+  },
+  "recorded": {
+    "legacy-multilabel": {
+      "server": {
+        "messages": 7,
+        "valid": 7,
+        "deliberately_malformed": [],
+        "invalid": [],
+        "unchecked": [],
+        "by_type": [
+          "2025-11-25 CallToolResult x1",
+          "2025-11-25 InitializeResult x1",
+          "2025-11-25 ListPromptsResult x1",
+          "2025-11-25 ListResourcesResult x1",
+          "2025-11-25 ListToolsResult x1",
+          "2025-11-25 ProgressNotification x1",
+          "2025-11-25 ReadResourceResult x1"
+        ]
+      },
+      "client": {
+        "messages": 7,
+        "valid": 7,
+        "deliberately_malformed": [],
+        "invalid": [],
+        "unchecked": [],
+        "by_type": [
+          "2025-11-25 CallToolRequest x1",
+          "2025-11-25 InitializeRequest x1",
+          "2025-11-25 InitializedNotification x1",
+          "2025-11-25 ListPromptsRequest x1",
+          "2025-11-25 ListResourcesRequest x1",
+          "2025-11-25 ListToolsRequest x1",
+          "2025-11-25 ReadResourceRequest x1"
+        ]
+      }
+    },
+    "modern-models": {
+      "server": {
+        "messages": 5,
+        "valid": 5,
+        "deliberately_malformed": [],
+        "invalid": [],
+        "unchecked": [],
+        "by_type": [
+          "2026-07-28 CallToolResult x1",
+          "2026-07-28 DiscoverResult x1",
+          "2026-07-28 ListPromptsResult x1",
+          "2026-07-28 ListResourcesResult x1",
+          "2026-07-28 ListToolsResult x1"
+        ]
+      },
+      "client": {
+        "messages": 5,
+        "valid": 5,
+        "deliberately_malformed": [],
+        "invalid": [],
+        "unchecked": [],
+        "by_type": [
+          "2026-07-28 CallToolRequest x1",
+          "2026-07-28 DiscoverRequest x1",
+          "2026-07-28 ListPromptsRequest x1",
+          "2026-07-28 ListResourcesRequest x1",
+          "2026-07-28 ListToolsRequest x1"
+        ]
+      }
+    },
+    "modern-rerank": {
+      "server": {
+        "messages": 7,
+        "valid": 7,
+        "deliberately_malformed": [],
+        "invalid": [],
+        "unchecked": [],
+        "by_type": [
+          "2026-07-28 CallToolResult x1",
+          "2026-07-28 DiscoverResult x1",
+          "2026-07-28 ListPromptsResult x1",
+          "2026-07-28 ListResourcesResult x1",
+          "2026-07-28 ListToolsResult x1",
+          "2026-07-28 ProgressNotification x1",
+          "2026-07-28 ReadResourceResult x1"
+        ]
+      },
+      "client": {
+        "messages": 6,
+        "valid": 6,
+        "deliberately_malformed": [],
+        "invalid": [],
+        "unchecked": [],
+        "by_type": [
+          "2026-07-28 CallToolRequest x1",
+          "2026-07-28 DiscoverRequest x1",
+          "2026-07-28 ListPromptsRequest x1",
+          "2026-07-28 ListResourcesRequest x1",
+          "2026-07-28 ListToolsRequest x1",
+          "2026-07-28 ReadResourceRequest x1"
+        ]
+      }
+    },
+    "modern-review-workflow": {
+      "server": {
+        "messages": 9,
+        "valid": 9,
+        "deliberately_malformed": [],
+        "invalid": [],
+        "unchecked": [],
+        "by_type": [
+          "2026-07-28 CallToolResult x4",
+          "2026-07-28 DiscoverResult x1",
+          "2026-07-28 ListPromptsResult x1",
+          "2026-07-28 ListResourcesResult x1",
+          "2026-07-28 ListToolsResult x1",
+          "2026-07-28 ProgressNotification x1"
+        ]
+      },
+      "client": {
+        "messages": 8,
+        "valid": 8,
+        "deliberately_malformed": [],
+        "invalid": [],
+        "unchecked": [],
+        "by_type": [
+          "2026-07-28 CallToolRequest x4",
+          "2026-07-28 DiscoverRequest x1",
+          "2026-07-28 ListPromptsRequest x1",
+          "2026-07-28 ListResourcesRequest x1",
+          "2026-07-28 ListToolsRequest x1"
+        ]
+      }
+    },
+    "prompt-cost-report": {
+      "server": {
+        "messages": 7,
+        "valid": 7,
+        "deliberately_malformed": [],
+        "invalid": [],
+        "unchecked": [],
+        "by_type": [
+          "2025-11-25 CallToolResult x2",
+          "2025-11-25 GetPromptResult x1",
+          "2025-11-25 InitializeResult x1",
+          "2025-11-25 ListPromptsResult x1",
+          "2025-11-25 ListResourcesResult x1",
+          "2025-11-25 ListToolsResult x1"
+        ]
+      },
+      "client": {
+        "messages": 8,
+        "valid": 8,
+        "deliberately_malformed": [],
+        "invalid": [],
+        "unchecked": [],
+        "by_type": [
+          "2025-11-25 CallToolRequest x2",
+          "2025-11-25 GetPromptRequest x1",
+          "2025-11-25 InitializeRequest x1",
+          "2025-11-25 InitializedNotification x1",
+          "2025-11-25 ListPromptsRequest x1",
+          "2025-11-25 ListResourcesRequest x1",
+          "2025-11-25 ListToolsRequest x1"
+        ]
+      }
+    },
+    "resource-guide": {
+      "server": {
+        "messages": 7,
+        "valid": 7,
+        "deliberately_malformed": [],
+        "invalid": [],
+        "unchecked": [],
+        "by_type": [
+          "2025-11-25 CallToolResult x1",
+          "2025-11-25 InitializeResult x1",
+          "2025-11-25 ListPromptsResult x1",
+          "2025-11-25 ListResourcesResult x1",
+          "2025-11-25 ListToolsResult x1",
+          "2025-11-25 ProgressNotification x1",
+          "2025-11-25 ReadResourceResult x1"
+        ]
+      },
+      "client": {
+        "messages": 7,
+        "valid": 7,
+        "deliberately_malformed": [],
+        "invalid": [],
+        "unchecked": [],
+        "by_type": [
+          "2025-11-25 CallToolRequest x1",
+          "2025-11-25 InitializeRequest x1",
+          "2025-11-25 InitializedNotification x1",
+          "2025-11-25 ListPromptsRequest x1",
+          "2025-11-25 ListResourcesRequest x1",
+          "2025-11-25 ListToolsRequest x1",
+          "2025-11-25 ReadResourceRequest x1"
+        ]
+      }
+    },
+    "resource-guide-haiku": {
+      "server": {
+        "messages": 7,
+        "valid": 7,
+        "deliberately_malformed": [],
+        "invalid": [],
+        "unchecked": [],
+        "by_type": [
+          "2025-11-25 CallToolResult x1",
+          "2025-11-25 InitializeResult x1",
+          "2025-11-25 ListPromptsResult x1",
+          "2025-11-25 ListResourcesResult x1",
+          "2025-11-25 ListToolsResult x1",
+          "2025-11-25 ProgressNotification x1",
+          "2025-11-25 ReadResourceResult x1"
+        ]
+      },
+      "client": {
+        "messages": 7,
+        "valid": 7,
+        "deliberately_malformed": [],
+        "invalid": [],
+        "unchecked": [],
+        "by_type": [
+          "2025-11-25 CallToolRequest x1",
+          "2025-11-25 InitializeRequest x1",
+          "2025-11-25 InitializedNotification x1",
+          "2025-11-25 ListPromptsRequest x1",
+          "2025-11-25 ListResourcesRequest x1",
+          "2025-11-25 ListToolsRequest x1",
+          "2025-11-25 ReadResourceRequest x1"
+        ]
+      }
+    }
+  },
+  "sweep": {
+    "server": {
+      "messages": 53,
+      "valid": 53,
+      "deliberately_malformed": [],
+      "invalid": [],
+      "unchecked": [],
+      "by_type": [
+        "2025-11-25 CallToolResult x7",
+        "2025-11-25 CompleteResult x2",
+        "2025-11-25 EmptyResult x3",
+        "2025-11-25 GetPromptResult x3",
+        "2025-11-25 InitializeResult x1",
+        "2025-11-25 JSONRPCErrorResponse x5",
+        "2025-11-25 ListPromptsResult x1",
+        "2025-11-25 ListResourceTemplatesResult x1",
+        "2025-11-25 ListResourcesResult x1",
+        "2025-11-25 ListToolsResult x1",
+        "2025-11-25 ProgressNotification x2",
+        "2025-11-25 ReadResourceResult x5",
+        "2025-11-25 ResourceUpdatedNotification x1",
+        "2026-07-28 CallToolResult x4",
+        "2026-07-28 CompleteResult x1",
+        "2026-07-28 DiscoverResult x1",
+        "2026-07-28 GetPromptResult x1",
+        "2026-07-28 JSONRPCErrorResponse x3",
+        "2026-07-28 ListPromptsResult x1",
+        "2026-07-28 ListResourceTemplatesResult x1",
+        "2026-07-28 ListResourcesResult x1",
+        "2026-07-28 ListToolsResult x1",
+        "2026-07-28 ProgressNotification x1",
+        "2026-07-28 ReadResourceResult x2",
+        "2026-07-28 ResourceUpdatedNotification x1",
+        "2026-07-28 SubscriptionsAcknowledgedNotification x1",
+        "2026-07-28 SubscriptionsListenResult x1"
+      ]
+    },
+    "client": {
+      "messages": 43,
+      "valid": 43,
+      "deliberately_malformed": [
+        "no/such/method",
+        "tools/list",
+        "tools/list",
+        "ping",
+        "server/discover"
+      ],
+      "invalid": [],
+      "unchecked": [],
+      "by_type": [
+        "2025-11-25 CallToolRequest x8",
+        "2025-11-25 CompleteRequest x2",
+        "2025-11-25 DiscoverRequest x1",
+        "2025-11-25 GetPromptRequest x3",
+        "2025-11-25 InitializeRequest x1",
+        "2025-11-25 InitializedNotification x1",
+        "2025-11-25 ListPromptsRequest x1",
+        "2025-11-25 ListResourceTemplatesRequest x1",
+        "2025-11-25 ListResourcesRequest x1",
+        "2025-11-25 ListToolsRequest x2",
+        "2025-11-25 PingRequest x1",
+        "2025-11-25 ReadResourceRequest x6",
+        "2025-11-25 SubscribeRequest x1",
+        "2025-11-25 UnsubscribeRequest x1",
+        "2025-11-25 no/such/method x1",
+        "2026-07-28 CallToolRequest x4",
+        "2026-07-28 CompleteRequest x1",
+        "2026-07-28 DiscoverRequest x1",
+        "2026-07-28 GetPromptRequest x1",
+        "2026-07-28 ListPromptsRequest x1",
+        "2026-07-28 ListResourceTemplatesRequest x1",
+        "2026-07-28 ListResourcesRequest x1",
+        "2026-07-28 ListToolsRequest x2",
+        "2026-07-28 PingRequest x1",
+        "2026-07-28 ReadResourceRequest x3",
+        "2026-07-28 SubscriptionsListenRequest x1"
+      ]
+    }
+  },
+  "tool_schemas": [
+    {
+      "tool": "jev_ask",
+      "schema": "inputSchema",
+      "valid_2020_12": true,
+      "compiles_strict": true,
+      "error": null
+    },
+    {
+      "tool": "jev_ask",
+      "schema": "outputSchema",
+      "valid_2020_12": true,
+      "compiles_strict": true,
+      "error": null
+    },
+    {
+      "tool": "jev_usage",
+      "schema": "inputSchema",
+      "valid_2020_12": true,
+      "compiles_strict": true,
+      "error": null
+    },
+    {
+      "tool": "jev_usage",
+      "schema": "outputSchema",
+      "valid_2020_12": true,
+      "compiles_strict": true,
+      "error": null
+    },
+    {
+      "tool": "jev_history",
+      "schema": "inputSchema",
+      "valid_2020_12": true,
+      "compiles_strict": true,
+      "error": null
+    },
+    {
+      "tool": "jev_history",
+      "schema": "outputSchema",
+      "valid_2020_12": true,
+      "compiles_strict": true,
+      "error": null
+    },
+    {
+      "tool": "jev_review",
+      "schema": "inputSchema",
+      "valid_2020_12": true,
+      "compiles_strict": true,
+      "error": null
+    },
+    {
+      "tool": "jev_review",
+      "schema": "outputSchema",
+      "valid_2020_12": true,
+      "compiles_strict": true,
+      "error": null
+    },
+    {
+      "tool": "jev_models",
+      "schema": "inputSchema",
+      "valid_2020_12": true,
+      "compiles_strict": true,
+      "error": null
+    },
+    {
+      "tool": "jev_models",
+      "schema": "outputSchema",
+      "valid_2020_12": true,
+      "compiles_strict": true,
+      "error": null
+    }
+  ]
+}

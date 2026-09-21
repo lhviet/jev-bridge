@@ -16,8 +16,9 @@
  */
 import { readFileSync } from 'node:fs';
 import { loadKey } from '../src/server.mjs';
+import { DEFAULT_MODEL, request } from '../src/typesafe.mjs';
 
-const [file, model = process.env.TYPESAFE_MODEL || 'jev-latest'] = process.argv.slice(2);
+const [file, model = DEFAULT_MODEL] = process.argv.slice(2);
 if (!file) {
   process.stderr.write('usage: node examples/replay.mjs <eval.jsonl> [model]\n');
   process.exit(2);
@@ -27,7 +28,6 @@ if (!key) {
   process.stderr.write('No TypeSafe API key. See "Configure your API key" in the README.\n');
   process.exit(1);
 }
-const BASE = (process.env.TYPESAFE_API_URL || 'https://api.typesafe.ai/v1').replace(/\/+$/, '');
 
 /** What an answer settled on, in the terms a review records it. */
 const decision = (a) => (a?.type === 'noul' ? a.noul >= 0.5 : a?.type === 'choice' ? a.choice : a?.type === 'score' ? Math.round(a.score) : undefined);
@@ -35,23 +35,8 @@ const same = (a, b) => a !== undefined && JSON.stringify(a) === JSON.stringify(b
 const truthOf = (c, q) => (c.expected && q in c.expected ? c.expected[q] : c.verdict === 'correct' ? decision(c.answers?.[q]) : undefined);
 const show = (v) => (v === undefined ? '—' : JSON.stringify(v));
 
-/** One POST, retried with backoff on the two statuses TypeSafe documents for it. */
-async function ask(body) {
-  for (let attempt = 1; ; attempt++) {
-    const res = await fetch(`${BASE}/systemone`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body,
-      signal: AbortSignal.timeout(60_000),
-    });
-    if ((res.status === 429 || res.status === 529) && attempt < 4) {
-      await res.text();
-      await new Promise((r) => setTimeout(r, 1000 * attempt));
-      continue;
-    }
-    return res;
-  }
-}
+/** One POST, retried exactly as the bridge retries: the TypeSafe SDKs' policy. */
+const ask = (body) => request('/systemone', { method: 'POST', body, key });
 
 const cases = readFileSync(file, 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l));
 const rows = [['call', 'question', 'should be', 'was', 'now', '']];
@@ -69,10 +54,9 @@ for (const c of cases) {
   if (res.status !== 200) {
     failed++;
     rows.push([c.id, '', '', '', '', `failed: HTTP ${res.status}`]);
-    await res.text();
     continue;
   }
-  const body = await res.json();
+  const body = JSON.parse(res.text);
   tokens += body.usage?.input_tokens ?? 0;
   for (const q of Object.keys(c.questions)) {
     const truth = truthOf(c, q);

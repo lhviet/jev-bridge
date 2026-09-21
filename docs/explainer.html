@@ -393,9 +393,9 @@ sequenceDiagram
     S-->>CC: answers · cached:true · 0.08 ms
   else nothing usable stored
     S->>T: POST /v1/systemone + Bearer
-    alt 429 or 529
-      T-->>S: rate limited / overloaded
-      S->>S: sleep(retry-after), back off, retry
+    alt 408, 429 or 5xx
+      T-->>S: timed out / rate limited / overloaded
+      S->>S: sleep(Retry-After), back off, retry (at most twice)
     end
     T-->>S: 200 — answers + usage
     S->>DB: store the answers
@@ -736,8 +736,8 @@ npm test
 <span class="c"># rotate the key — one file, every project follows</span>
 printf 'TYPESAFE_API_KEY=%s\n' "$NEW" &gt; ~/.jev-bridge/.env
 chmod 600 ~/.jev-bridge/.env</pre>
-  <p>Five tools reach Claude Code: <code>jev_ask</code>, <code>jev_usage</code>, <code>jev_history</code>, <code>jev_review</code> and <code>jev_models</code>. A session already running when the bridge changed fixed its tool list at startup and will not see them — start a new one.</p>
-  <p class="note">Knobs, all optional: <code>JEV_BRIDGE_HOME</code> (~/.jev-bridge), <code>TYPESAFE_CACHE_TTL_DAYS</code> (7), <code>TYPESAFE_CACHE_MAX</code> (20000), <code>TYPESAFE_DB</code>, <code>TYPESAFE_MODEL</code>, <code>TYPESAFE_USD_PER_MTOK</code> (0.042), <code>TYPESAFE_API_URL</code>, <code>TYPESAFE_TIMEOUT_MS</code>, <code>TYPESAFE_HISTORY</code> (full, meta or off), <code>TYPESAFE_HISTORY_DAYS</code> (30), <code>TYPESAFE_HISTORY_MAX</code> (10000).</p>
+  <p>Five tools reach Claude Code: <code>jev_ask</code>, <code>jev_usage</code>, <code>jev_history</code>, <code>jev_review</code> and <code>jev_models</code>; so do four resources (<code>jev://guide</code> among them, for <code>@</code>-mentions) and three prompts, offered as <code>/mcp__jev__review_uncertain</code>, <code>/mcp__jev__cost_report</code> and <code>/mcp__jev__question_design</code>. The bridge speaks MCP 2026-07-28 and the older <code>initialize</code> handshake alike. A session already running when the bridge changed fixed its tool list at startup and will not see them — start a new one.</p>
+  <p class="note">Knobs, all optional: <code>JEV_BRIDGE_HOME</code> (~/.jev-bridge), <code>TYPESAFE_CACHE_TTL_DAYS</code> (7), <code>TYPESAFE_CACHE_MAX</code> (20000), <code>TYPESAFE_DB</code>, <code>TYPESAFE_DEFAULT_MODEL</code> (jev-latest), <code>TYPESAFE_USD_PER_MTOK</code> (0.042), <code>TYPESAFE_BASE_URL</code>, <code>TYPESAFE_TIMEOUT_MS</code> (10000 per attempt), <code>TYPESAFE_MAX_RETRIES</code> (2), <code>TYPESAFE_HISTORY</code> (full, meta or off), <code>TYPESAFE_HISTORY_DAYS</code> (30), <code>TYPESAFE_HISTORY_MAX</code> (10000).</p>
 </section>
 
 <footer>

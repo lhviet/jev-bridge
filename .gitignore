@@ -18,3 +18,7 @@ node_modules/
 coverage/
 *.log
 .DS_Store
+
+# Evidence logs are synthetic demo tickets, recorded on purpose.
+!evidence/runs/**/*.jsonl
+!evidence/before/*.jsonl

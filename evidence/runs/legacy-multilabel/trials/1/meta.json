@@ -1,0 +1,32 @@
+{
+  "scenario": "legacy-multilabel",
+  "trial": 1,
+  "about": "Default Claude Code (2025-11-25 handshake) with every skill disabled, so only the server's instructions, descriptions and guide steer the agent. Four labels that can all be true, plus urgency.",
+  "started": "2026-09-21T05:24:44.270Z",
+  "finished": "2026-09-21T05:25:08.704Z",
+  "exit_code": 0,
+  "model": "sonnet",
+  "env": {},
+  "command": [
+    "claude",
+    "-p",
+    "--model",
+    "sonnet",
+    "--strict-mcp-config",
+    "--mcp-config",
+    "<workdir>/legacy-multilabel-trial-1/mcp.json",
+    "--allowedTools",
+    "mcp__jev",
+    "ListMcpResourcesTool",
+    "ReadMcpResourceTool",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--no-session-persistence",
+    "--max-budget-usd",
+    "1",
+    "--disable-slash-commands",
+    "A customer wrote: \"Third time this week the export button does nothing. I'm on the Pro plan paying $40/mo and I want a refund if this isn't fixed today.\" Which of these apply: bug report, billing question, refund request, churn risk? And how urgent is it? I want calibrated probabilities, not your impression."
+  ],
+  "stderr": null
+}
