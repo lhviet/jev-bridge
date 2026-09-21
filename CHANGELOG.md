@@ -6,6 +6,20 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `evidence/numbers.mjs` (`npm run numbers`, and a CI step): checks every
+  number the documentation states — versions, line counts, tests per file, the
+  Node versions CI runs — against the repository itself, and names the file and
+  figure to correct when one drifts.
+- The explainer is published as a page at
+  <https://lhviet.github.io/jev-bridge/explainer.html>.
+
+### Fixed
+
+- The explainer still said 0.1.0 and 95 tests, and quoted line counts from
+  before the module split.
+
 ## [0.2.0] - 2026-09-21
 
 ### Added

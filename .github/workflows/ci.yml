@@ -27,3 +27,5 @@ jobs:
       - run: node --version
       # No install step: the package has no dependencies.
       - run: npm test
+      # The numbers the documentation states, against the repository itself.
+      - run: npm run numbers

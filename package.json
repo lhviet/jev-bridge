@@ -26,7 +26,8 @@
     "evidence": "node evidence/run.mjs && node evidence/validate-wire.mjs && node evidence/report.mjs",
     "evidence:report": "node evidence/report.mjs",
     "evidence:install": "node evidence/install.mjs --source .",
-    "evidence:examples": "node evidence/examples.mjs"
+    "evidence:examples": "node evidence/examples.mjs",
+    "numbers": "node evidence/numbers.mjs"
   },
   "engines": {
     "node": ">=18"

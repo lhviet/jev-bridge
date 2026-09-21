@@ -1118,6 +1118,7 @@ npm run selftest  # one live call against the real API
 npm run stats     # usage over the last 7 days
 npm run ui        # the call-history dashboard
 npm run evidence  # record real Claude Code sessions (costs a little), then validate and report
+npm run numbers   # check every number this documentation states against the repository
 ```
 
 ```text
@@ -1146,6 +1147,7 @@ jev-bridge/
 │   ├── runs/             the recorded sessions: wire logs, transcripts, trials
 │   ├── install.mjs       follows the install guide in a sandbox → install.md
 │   ├── examples.mjs      runs every documented request live → examples.md, examples.json
+│   ├── numbers.mjs       checks the numbers this documentation states, in CI
 │   └── stdio-client.mjs  the minimal MCP client those two use
 ├── examples/
 │   ├── eval-set.mjs      reviewed calls as an evaluation set (JSONL)
