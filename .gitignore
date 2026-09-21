@@ -3,10 +3,16 @@
 .env.*
 !.env.example
 
-# The local answer cache and usage log.
+# The local answer cache, usage log and call history.
 *.db
 *.db-wal
 *.db-shm
+
+# Exports from the history hold the states that were asked about:
+# evaluation sets (examples/eval-set.mjs) and spreadsheets.
+*.jsonl
+jev-calls.csv
+jev-history.json
 
 node_modules/
 coverage/

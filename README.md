@@ -173,7 +173,6 @@ sequenceDiagram
   alt a fresh answer is stored for the same model
     rect rgba(22,163,74,0.14)
       D-->>B: answers
-      B->>D: log a hit, 0 tokens
       B-->>C: answers · cached: true · about 0.08 ms
     end
   else nothing usable is stored
@@ -184,16 +183,19 @@ sequenceDiagram
         B->>B: back off, honouring retry-after, then retry
       end
       T-->>B: 200 · answers and usage
-      B->>D: store the answers, log tokens and cost
+      B->>D: store the answers
       B-->>C: answers · cached: false · about 180 ms
     end
   end
+  B-)D: once idle, log tokens and cost, and record the call for review
 ```
 
 Three things happen before any network call: every question is checked, the
 questions are fingerprinted by their meaning rather than their ids, and the
 cache is consulted. Only a successful answer is ever stored, so a transient
-failure can never be served back to you as a cached one.
+failure can never be served back to you as a cached one. The usage log and the
+call history are written last — after the answer has gone back, once the
+bridge is idle — so keeping them costs the call nothing.
 
 ### Reading the diagrams
 
@@ -374,6 +376,18 @@ Note the absolute path of the server — you will need it in a moment:
 ```bash
 echo "$(pwd)/src/server.mjs"
 ```
+
+**Updating** is a pull, then a new Claude Code session:
+
+```bash
+git -C /path/to/jev-bridge pull
+```
+
+Your key and your data live in `~/.jev-bridge/`, not in the clone, so an update
+never touches them. If you also work on jev-bridge, keep that clone separate
+from the one Claude Code runs, and clone the installed copy *from* your working
+copy. Then the installed copy only ever runs what you have committed, never a
+half-finished edit, and a `git pull` brings it up to date without a push.
 
 ## Configure your API key
 
@@ -677,6 +691,19 @@ node src/server.mjs --history 7 uncertain   # stats and calls as JSON
 node src/server.mjs --clear-history         # forget it all; the cache and usage log stay
 ```
 
+**Going further.** The database is an ordinary SQLite file, and
+[docs/analytics.md](docs/analytics.md) shows how to query it safely: latency
+by model, failures and retries, calls that should have been batched, whether
+Jev's certainty predicts its accuracy, accuracy per question, and exports to
+CSV, JSON or Python. It also turns your reviewed calls into an evaluation set
+and replays it against a new model, so you can see whether `jev-preview` is
+better on *your* questions before you switch:
+
+```bash
+node examples/eval-set.mjs > eval.jsonl
+node examples/replay.mjs eval.jsonl jev-preview
+```
+
 **What is kept.** `TYPESAFE_HISTORY` decides:
 
 | Mode | Keeps | Use it when |
@@ -803,9 +830,14 @@ jev-bridge/
 │   └── ui.html           the dashboard page, no network dependencies
 ├── test/
 │   ├── server.test.mjs   36 tests
-│   └── history.test.mjs  55 tests
+│   ├── history.test.mjs  55 tests
+│   └── examples.test.mjs  4 tests
+├── examples/
+│   ├── eval-set.mjs      reviewed calls as an evaluation set (JSONL)
+│   └── replay.mjs        score a model against that set
 └── docs/
     ├── architecture.md   components, storage, cache keys, testing, decisions
+    ├── analytics.md      querying the database: performance, quality, evaluation
     ├── recipes.md        six worked patterns with real output
     └── explainer.html    the same material as one illustrated page
 ```

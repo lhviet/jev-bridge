@@ -332,6 +332,9 @@ server also flushes on exit and on SIGINT, SIGTERM and SIGHUP. A record that
 cannot be written is logged to stderr and dropped. It never fails the call, and
 never takes the usage record beside it down with it.
 
+To query the history yourself — SQL recipes, exports, and replaying reviewed
+calls against a new model — see [analytics.md](analytics.md).
+
 ### Keeping it bounded
 
 Unreviewed calls are pruned after `TYPESAFE_HISTORY_DAYS` (30) and beyond
@@ -369,7 +372,7 @@ that wobble. Pass `"cache": false` when you are measuring rather than deciding.
 
 ## How it is tested
 
-91 tests on the built-in `node --test` runner — no test framework installed.
+95 tests on the built-in `node --test` runner — no test framework installed.
 
 - **Only the TypeSafe API is faked**, because it is external and billed.
   SQLite, the MCP protocol over a real child process, and two processes
@@ -423,6 +426,9 @@ had thought to ask.
 - **A call history** with reviews, surfaced through `jev_history`, `jev_review`,
   `--history` and the `--ui` dashboard, and written only after each answer has
   gone back.
+- **An evaluation loop.** `examples/eval-set.mjs` turns reviewed calls into a
+  JSONL evaluation set, and `examples/replay.mjs` scores any model against it,
+  comparing decisions rather than probabilities.
 - **Typed output** — `jev_ask` declares an `outputSchema` and returns `structuredContent`.
 - **Alias-drift invalidation**, so a model release retires stale answers.
 - **An in-memory fallback**, so an old Node degrades instead of failing to start.
@@ -448,8 +454,9 @@ had thought to ask.
   off every call anyone waits for. A worker would also take the 2–4 ms off p99
   in an unbroken burst, at the price of a second isolate and asynchronous
   reads.
-- **Replaying reviewed calls.** Reviewed calls with `expected` answers form a
-  regression set. Re-asking them when `jev-latest` moves to a new version would
-  show whether it got better or worse on your own questions.
+- **Replaying automatically.** The replay is a command you run. Running it by
+  itself when `jev-latest` starts resolving to a new version — the bridge
+  already notices that moment, to retire stale cache entries — would catch a
+  regression on your own questions without anyone remembering to look.
 - **Pruning the usage log.** The cache evicts itself; the log grows without a
   ceiling, at roughly 80 bytes a call.

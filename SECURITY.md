@@ -49,6 +49,12 @@ This is the part most worth scrutinising, so here is exactly what the code does:
   have reviewed. `jev-bridge --clear-history` deletes all of it. Changing the
   mode does not rewrite calls already recorded.
 
+Anything you export from the history carries what it kept — an evaluation set
+from `examples/eval-set.mjs` holds every reviewed state in full. The repository
+ignores `*.jsonl` and the export file names used in
+[docs/analytics.md](docs/analytics.md), but a copy saved elsewhere is yours to
+keep private.
+
 ## The history dashboard
 
 `jev-bridge --ui` starts a web server so you can review calls in a browser. It

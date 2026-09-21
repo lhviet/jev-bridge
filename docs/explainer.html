@@ -240,7 +240,7 @@ footer p{max-width:var(--measure)}
     <div><b>184 ms</b><span>a live answer</span></div>
     <div><b>0.077 ms</b><span>the same answer again</span></div>
     <div><b>2,370&times;</b><span>faster on a repeat</span></div>
-    <div><b>35</b><span>tests, all green</span></div>
+    <div><b>95</b><span>tests, all green</span></div>
     <div><b>0</b><span>dependencies</span></div>
   </div>
 
@@ -253,6 +253,7 @@ footer p{max-width:var(--measure)}
     <a href="#sqlite">Why SQLite</a>
     <a href="#idbug">The bug the cache had</a>
     <a href="#key">Where the key lives</a>
+    <a href="#history">Looking back at calls</a>
     <a href="#tests">How it is tested</a>
     <a href="#status">Built, declined, left</a>
     <a href="#using">Working with it</a>
@@ -298,17 +299,20 @@ footer p{max-width:var(--measure)}
   <h3>The bridge, which is the part that runs</h3>
 <div class="tree"><span class="d">jev-bridge/</span>                       <span class="m">the repository</span>
 ├── <span class="d">src/</span>
-│   ├── server.mjs          <span class="s">571 lines</span>  <span class="m">MCP protocol, the 3 tools, CLI, retries</span>
-│   └── store.mjs           <span class="s">289 lines</span>  <span class="m">SQLite cache + usage log, memory fallback</span>
-├── <span class="d">test/</span>
-│   └── server.test.mjs     <span class="s">380 lines</span>  <span class="m">35 tests, run by node --test</span>
-├── <span class="d">docs/</span>                            <span class="m">recipes.md, and this page</span>
+│   ├── server.mjs          <span class="s">715 lines</span>  <span class="m">MCP protocol, the 5 tools, CLI, retries</span>
+│   ├── store.mjs           <span class="s">627 lines</span>  <span class="m">SQLite cache, usage log, history; memory fallback</span>
+│   ├── history.mjs         <span class="s">196 lines</span>  <span class="m">certainty, filters, the stats a review reads</span>
+│   ├── ui.mjs              <span class="s">127 lines</span>  <span class="m">the dashboard's local server</span>
+│   └── ui.html             <span class="s">894 lines</span>  <span class="m">the dashboard page, nothing fetched from the web</span>
+├── <span class="d">test/</span>                  <span class="s">1,103 lines</span>  <span class="m">95 tests, run by node --test</span>
+├── <span class="d">examples/</span>              <span class="s">148 lines</span>  <span class="m">build an evaluation set, replay it</span>
+├── <span class="d">docs/</span>                            <span class="m">architecture, analytics, recipes, and this page</span>
 ├── LICENSE                            <span class="m">MIT</span>
 └── package.json                       <span class="m">no dependencies</span>
-<span class="tot"><b>1,240 lines of JavaScript, 0 dependencies.</b></span></div>
+<span class="tot"><b>2,916 lines of JavaScript and one page, 0 dependencies.</b></span></div>
 <div class="tree"><span class="d">~/.jev-bridge/</span>                    <span class="m">created 0700 on first use</span>
 ├── .env                    <span class="s">chmod 600</span>  <span class="m">your API key, and nothing else</span>
-└── jev.db                             <span class="m">cached answers + the usage log</span>
+└── jev.db                             <span class="m">cached answers, the usage log, the call history</span>
 <span class="tot">While the database is open, SQLite adds <code>jev.db-wal</code> and <code>jev.db-shm</code> beside it;
 a checkpoint folds them back in.</span></div>
 </section>
@@ -386,7 +390,6 @@ sequenceDiagram
 
   alt stored, still fresh, same model
     DB-->>S: the answers
-    S->>DB: log a hit — 0 tokens
     S-->>CC: answers · cached:true · 0.08 ms
   else nothing usable stored
     S->>T: POST /v1/systemone + Bearer
@@ -395,12 +398,13 @@ sequenceDiagram
       S->>S: sleep(retry-after), back off, retry
     end
     T-->>S: 200 — answers + usage
-    S->>DB: store answers, log tokens and cost
+    S->>DB: store the answers
     S-->>CC: answers · cached:false · ~180 ms
   end
+  S-)DB: once idle — log tokens and cost, record the call for review
 </pre>
     </div>
-    <figcaption>Errors are never stored. A 529 today must not become a week of cached failure, so only a 200 is written — a rule with a test of its own.</figcaption>
+    <figcaption>Errors are never cached. A 529 today must not become a week of cached failure, so only a 200 is stored as an answer — a rule with a test of its own. Every call, failures included, is logged, but only after the answer has gone back.</figcaption>
   </figure>
 
   <h3>The three question types</h3>
@@ -580,15 +584,18 @@ flowchart LR
     <figcaption>Asserted by a test, not by argument: two real processes each write 400 entries to one file and every one survives. Delete the <code>busy_timeout</code> line and that test fails — which is exactly what a JSON file would do, quietly, with no line to delete.</figcaption>
   </figure>
 
-  <h3>The three tables</h3>
+  <h3>The five tables</h3>
 <div class="tree"><span class="d">jev.db</span>
 ├── <span class="d">cache</span>     <span class="m">key (sha256) · requested_model · resolved_model · response</span>
 │             <span class="m">created_at · last_hit_at · hits        — WITHOUT ROWID, indexed by use</span>
 ├── <span class="d">calls</span>     <span class="m">ts · cached · questions · input_tokens · output_tokens</span>
 │             <span class="m">saved_input_tokens · saved_usd · latency_ms · cost_usd · status</span>
-└── <span class="d">aliases</span>   <span class="m">requested → resolved — how a moved model alias is noticed</span>
-<span class="tot">The cache stores <b>answers only</b>. Your <code>state</code> and your questions are never written to disk —
-the key is a hash of them, which cannot be read back.</span></div>
+├── <span class="d">aliases</span>   <span class="m">requested → resolved — how a moved model alias is noticed</span>
+├── <span class="d">history</span>   <span class="m">one row per call: timing, retries, cost, certainty, answers, review</span>
+└── <span class="d">payloads</span>  <span class="m">each state and question set, stored once however often it is sent</span>
+<span class="tot">The cache stores <b>answers only</b>, filed under hashes. The history is the one place your
+<code>state</code> and questions are kept — so a reviewer can judge the answer — and only while
+<code>TYPESAFE_HISTORY</code> is <code>full</code>. On <code>meta</code> it keeps timings and answers, never the text.</span></div>
 
   <div class="stats" style="margin-top:22px">
     <div><b>184 ms</b><span>live, average of 3</span></div>
@@ -626,12 +633,31 @@ the key is a hash of them, which cannot be read back.</span></div>
     <li><code>--selftest</code> prints the key's length and first eight characters, so you can tell <em>which</em> key loaded — and nothing more.</li>
     <li>The repository's <code>.gitignore</code> excludes every <code>.env</code> and every database file, so a key placed in a clone cannot be committed by accident.</li>
   </ul>
-  <p>The database stores answers, token counts and timings — never the content you asked about. See <a href="../SECURITY.md">SECURITY.md</a>.</p>
+  <p>The cache and the usage log hold answers, token counts and timings — never the content you asked about. The call history does keep it, by default, because judging whether an answer was right needs the question; set <code>TYPESAFE_HISTORY=meta</code> to keep only timings and answers, or <code>off</code> for nothing. None of it leaves your machine. See <a href="../SECURITY.md">SECURITY.md</a>.</p>
+</section>
+
+<section id="history">
+  <h2>Looking back at calls</h2>
+  <p class="sub">Every call is kept for review, so you can ask two questions of it later: was it efficient, and was it right?</p>
+  <p>Each <code>jev_ask</code> — answered live, from the cache, rejected or timed out — is recorded with what was asked, what came back, how long it took, how many tries, and what it cost. <code>jev-bridge --ui</code> opens a dashboard on 127.0.0.1: latency percentiles, the cache hit rate, spend, a dot per live call, and the list of calls. Open one to see the state, every question, and each answer drawn as bars; mark it correct, partly right or wrong, and click the option that should have won.</p>
+  <div class="table-scroll">
+  <table>
+    <caption>What the history can tell you</caption>
+    <tr><th>Question</th><th>Where the answer comes from</th></tr>
+    <tr><td>Was it fast?</td><td>Latency per call; p50 and p95 over live calls</td></tr>
+    <tr><td>Did it wait on rate limits?</td><td>How many tries each call took</td></tr>
+    <tr><td>Was it batched?</td><td><em>Re-sent states</em>: live calls that sent a state already sent — their questions could have shared one call</td></tr>
+    <tr><td>Was Jev sure?</td><td>Certainty, from the least sure answer: a noul by its distance from 0.5, a choice or score by Jev's confidence</td></tr>
+    <tr><td>Was it right?</td><td>Your reviews — and, from them, accuracy</td></tr>
+  </table>
+  </div>
+  <p>Claude reaches the same history through <code>jev_history</code> and <code>jev_review</code>, so it can record a verdict itself when you correct an answer. Reviewed calls are never pruned: they become an evaluation set that <code>examples/replay.mjs</code> scores any model against, before you switch to it. <a href="analytics.md">docs/analytics.md</a> shows how to query all of it directly.</p>
+  <p><strong>It costs the answer nothing.</strong> Records queue in memory and are written in one transaction once the bridge has been idle for 20 ms. Measured end to end over MCP, median and p95 latency are unchanged against the version without history; the one cost is 2–4 ms at p99 in an unbroken burst of back-to-back calls.</p>
 </section>
 
 <section id="tests">
   <h2>How it is tested</h2>
-  <p class="sub">35 tests, no test framework installed — <code>node --test</code> is built in, like the database.</p>
+  <p class="sub">95 tests, no test framework installed — <code>node --test</code> is built in, like the database.</p>
   <p>Only the TypeSafe API is faked, because it is external and billed. SQLite, the MCP protocol and process contention all run for real. Every behaviour is checked twice: once against the SQLite store and once against the memory fallback.</p>
   <p>Passing tests prove nothing until they have been seen to fail, so each was re-run against a deliberately broken copy of the code:</p>
   <div class="table-scroll">
@@ -648,6 +674,13 @@ the key is a hash of them, which cannot be read back.</span></div>
     <tr><td>Eviction by age instead of by use</td><td>yes</td></tr>
     <tr><td><code>busy_timeout</code> removed</td><td>yes</td></tr>
     <tr><td>Question validation skipped</td><td>yes</td></tr>
+    <tr><td>Question text stored in the cache instead of a hash</td><td>yes</td></tr>
+    <tr><td>History written on the answer's path, or on the next tick instead of when idle</td><td>yes</td></tr>
+    <tr><td><code>meta</code> keeping the state</td><td>yes</td></tr>
+    <tr><td>Reviewed calls pruned by age</td><td>yes</td></tr>
+    <tr><td>Certainty taken from the most sure answer</td><td>yes</td></tr>
+    <tr><td>The dashboard skipping its Host check, or its token</td><td>yes</td></tr>
+    <tr><td>A replay ignoring the reviewer's expected answer</td><td>yes</td></tr>
   </table>
   </div>
   <p>Beyond that, the bridge was driven from a real Claude Code session end to end — which is how the question-id bug was found, and something no unit test had thought to ask.</p>
@@ -660,6 +693,7 @@ the key is a hash of them, which cannot be read back.</span></div>
   <ul class="done">
     <li><strong>Answers are cached.</strong> Keyed on state, questions and model — never on the ids. A hit costs nothing and returns in 0.08 ms.</li>
     <li><strong>Usage is kept.</strong> Every call records tokens, cost, latency and outcome. <code>jev_usage</code> reports it; so does <code>--stats</code>.</li>
+    <li><strong>Calls can be reviewed.</strong> The history keeps each call's input, answers, timing and cost, with a dashboard to judge them in and an evaluation loop to replay the verdicts against a new model — all written after the answer has gone back.</li>
     <li><strong>Output is typed.</strong> <code>jev_ask</code> declares an <code>outputSchema</code> and returns <code>structuredContent</code>, so the client gets data rather than a JSON string to re-read.</li>
     <li><strong>A moved alias invalidates itself.</strong> Each entry records the model that answered it; when <code>jev-latest</code> starts resolving elsewhere, old entries stop being served instead of silently outliving the release.</li>
     <li><strong>It survives an old Node.</strong> Machines with nvm often carry several Node versions, and anything before 22.5 lacks <code>node:sqlite</code>. The README tells you to register an absolute interpreter path; if the bridge still meets an old one, it falls back to an in-memory cache instead of failing to start.</li>
@@ -672,7 +706,8 @@ the key is a hash of them, which cannot be read back.</span></div>
   <ul class="todo">
     <li><strong>Normalising the question text.</strong> Case and whitespace differences still miss. Real rephrasing should miss — but <code>"Does this convey urgency?"</code> and <code>"does this convey urgency? "</code> need not.</li>
     <li><strong>A shared rate-limit budget.</strong> Each process retries on its own today. At your volume that is invisible; at a thousand calls a minute it would not be.</li>
-    <li><strong>Pruning the usage log.</strong> The cache evicts itself; the log grows forever. At roughly 80 bytes a call that is years away, but it has no ceiling.</li>
+    <li><strong>Pruning the usage log.</strong> The cache and the history prune themselves; the usage log grows forever. At roughly 80 bytes a call that is years away, but it has no ceiling.</li>
+    <li><strong>Replaying by itself.</strong> The bridge already notices when <code>jev-latest</code> moves to a new version. Replaying the evaluation set at that moment would catch a regression without anyone remembering to look.</li>
   </ul>
 </section>
 
@@ -684,7 +719,15 @@ node src/server.mjs --selftest
 <span class="c"># what has it cost, over the last 7 days?</span>
 node src/server.mjs --stats 7
 
-<span class="c"># throw away stored answers, keep the usage history</span>
+<span class="c"># look back at calls: a dashboard, or JSON</span>
+node src/server.mjs --ui
+node src/server.mjs --history 7 uncertain
+
+<span class="c"># is jev-preview better on the calls you reviewed?</span>
+node examples/eval-set.mjs &gt; eval.jsonl
+node examples/replay.mjs eval.jsonl jev-preview
+
+<span class="c"># throw away stored answers; keep the usage log and the history</span>
 node src/server.mjs --clear-cache
 
 <span class="c"># the tests</span>
@@ -693,8 +736,8 @@ npm test
 <span class="c"># rotate the key — one file, every project follows</span>
 printf 'TYPESAFE_API_KEY=%s\n' "$NEW" &gt; ~/.jev-bridge/.env
 chmod 600 ~/.jev-bridge/.env</pre>
-  <p>Three tools reach Claude Code: <code>jev_ask</code>, <code>jev_usage</code> and <code>jev_models</code>. A session already running when the bridge changed fixed its tool list at startup and will not see them — start a new one.</p>
-  <p class="note">Knobs, all optional: <code>JEV_BRIDGE_HOME</code> (~/.jev-bridge), <code>TYPESAFE_CACHE_TTL_DAYS</code> (7), <code>TYPESAFE_CACHE_MAX</code> (20000), <code>TYPESAFE_DB</code>, <code>TYPESAFE_MODEL</code>, <code>TYPESAFE_USD_PER_MTOK</code> (0.042), <code>TYPESAFE_API_URL</code>, <code>TYPESAFE_TIMEOUT_MS</code>.</p>
+  <p>Five tools reach Claude Code: <code>jev_ask</code>, <code>jev_usage</code>, <code>jev_history</code>, <code>jev_review</code> and <code>jev_models</code>. A session already running when the bridge changed fixed its tool list at startup and will not see them — start a new one.</p>
+  <p class="note">Knobs, all optional: <code>JEV_BRIDGE_HOME</code> (~/.jev-bridge), <code>TYPESAFE_CACHE_TTL_DAYS</code> (7), <code>TYPESAFE_CACHE_MAX</code> (20000), <code>TYPESAFE_DB</code>, <code>TYPESAFE_MODEL</code>, <code>TYPESAFE_USD_PER_MTOK</code> (0.042), <code>TYPESAFE_API_URL</code>, <code>TYPESAFE_TIMEOUT_MS</code>, <code>TYPESAFE_HISTORY</code> (full, meta or off), <code>TYPESAFE_HISTORY_DAYS</code> (30), <code>TYPESAFE_HISTORY_MAX</code> (10000).</p>
 </section>
 
 <footer>

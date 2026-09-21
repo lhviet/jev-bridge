@@ -24,6 +24,12 @@ All notable changes to this project are recorded here. The format follows
   record reviews. It listens on 127.0.0.1 only, needs a per-run token, checks
   the `Host` header, and loads nothing from the network.
 - `--history [days] [filter]` and `--clear-history`.
+- `docs/analytics.md`: querying the database safely, with SQL for latency,
+  failures, retries, batching, calibration, per-question accuracy and exports.
+- `examples/eval-set.mjs` and `examples/replay.mjs`: turn reviewed calls into an
+  evaluation set, and score any model against it before switching to it.
+- README: how to update an installation, and why to keep it apart from a
+  working copy.
 
 ### Changed
 
