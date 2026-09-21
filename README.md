@@ -263,7 +263,8 @@ zone — a boundary your data crosses.
 
 **Going deeper:** components, the storage decision, the database schema, how
 cache keys work and how it is tested are in
-**[docs/architecture.md](docs/architecture.md)**.
+**[docs/architecture.md](docs/architecture.md)**, or as one illustrated page at
+**[lhviet.github.io/jev-bridge/explainer.html](https://lhviet.github.io/jev-bridge/explainer.html)**.
 
 ## Proven with Claude Code
 
@@ -1155,6 +1156,9 @@ jev-bridge/
     ├── recipes.md        six worked patterns with real output
     └── explainer.html    the same material as one illustrated page
 ```
+
+The explainer reads best as a page:
+**[lhviet.github.io/jev-bridge/explainer.html](https://lhviet.github.io/jev-bridge/explainer.html)**.
 
 Only the TypeSafe API is faked in tests. SQLite, the MCP protocol and
 multi-process database contention run for real. See

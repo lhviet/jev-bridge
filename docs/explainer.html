@@ -637,7 +637,7 @@ flowchart LR
     <li><code>--selftest</code> prints the key's length and first eight characters, so you can tell <em>which</em> key loaded — and nothing more.</li>
     <li>The repository's <code>.gitignore</code> excludes every <code>.env</code> and every database file, so a key placed in a clone cannot be committed by accident.</li>
   </ul>
-  <p>The cache and the usage log hold answers, token counts and timings — never the content you asked about. The call history does keep it, by default, because judging whether an answer was right needs the question; set <code>TYPESAFE_HISTORY=meta</code> to keep only timings and answers, or <code>off</code> for nothing. None of it leaves your machine. See <a href="../SECURITY.md">SECURITY.md</a>.</p>
+  <p>The cache and the usage log hold answers, token counts and timings — never the content you asked about. The call history does keep it, by default, because judging whether an answer was right needs the question; set <code>TYPESAFE_HISTORY=meta</code> to keep only timings and answers, or <code>off</code> for nothing. None of it leaves your machine. See <a href="https://github.com/lhviet/jev-bridge/blob/main/SECURITY.md">SECURITY.md</a>.</p>
 </section>
 
 <section id="history">
@@ -655,7 +655,7 @@ flowchart LR
     <tr><td>Was it right?</td><td>Your reviews — and, from them, accuracy</td></tr>
   </table>
   </div>
-  <p>Claude reaches the same history through <code>jev_history</code> and <code>jev_review</code>, so it can record a verdict itself when you correct an answer. Reviewed calls are never pruned: they become an evaluation set that <code>examples/replay.mjs</code> scores any model against, before you switch to it. <a href="analytics.md">docs/analytics.md</a> shows how to query all of it directly.</p>
+  <p>Claude reaches the same history through <code>jev_history</code> and <code>jev_review</code>, so it can record a verdict itself when you correct an answer. Reviewed calls are never pruned: they become an evaluation set that <code>examples/replay.mjs</code> scores any model against, before you switch to it. <a href="https://github.com/lhviet/jev-bridge/blob/main/docs/analytics.md">docs/analytics.md</a> shows how to query all of it directly.</p>
   <p><strong>It costs the answer nothing.</strong> Records queue in memory and are written in one transaction once the bridge has been idle for 20 ms. Measured end to end over MCP, median and p95 latency are unchanged against the version without history; the one cost is 2–4 ms at p99 in an unbroken burst of back-to-back calls.</p>
 </section>
 
