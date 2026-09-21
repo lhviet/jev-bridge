@@ -1,5 +1,7 @@
 {
-  "generated": "2026-09-21T13:09:23.327Z",
+  "generated": "2026-09-21T13:18:37.989Z",
+  "commit": "2c8a071",
+  "modified": false,
   "node": "v24.21.0",
   "models": "jev-1.13.0",
   "passed": 15,
@@ -54,8 +56,8 @@
           },
           "frustration": {
             "type": "score",
-            "score": 1.04,
-            "confidence": 0.93,
+            "score": 1.03,
+            "confidence": 0.95,
             "legend": {
               "0": "Calm",
               "1": "Frustrated",
@@ -63,8 +65,8 @@
             },
             "probabilities": {
               "0": 0,
-              "1": 0.96,
-              "2": 0.04
+              "1": 0.97,
+              "2": 0.03
             }
           }
         },
@@ -74,11 +76,11 @@
         },
         "bridge": {
           "cached": false,
-          "latency_ms": 202.07,
+          "latency_ms": 223.97,
           "cost_usd": 0.000016758,
           "attempts": 1,
-          "request_id": "req_01a0c415e1547c6d991dfd0f5607de3a",
-          "call_id": "ee44526e-1"
+          "request_id": "req_01a0c41e57f774f28dfca261bbebb950",
+          "call_id": "e6946b99-1"
         }
       },
       "checks": [
@@ -144,10 +146,10 @@
             "choice": "issue_refund",
             "confidence": 1,
             "probabilities": {
-              "track_order": 0,
-              "cancel_subscription": 0,
               "issue_refund": 1,
-              "none": 0
+              "none": 0,
+              "cancel_subscription": 0,
+              "track_order": 0
             }
           },
           "refund_reason": {
@@ -155,9 +157,9 @@
             "choice": "damaged",
             "confidence": 1,
             "probabilities": {
+              "not_received": 0,
               "wrong_item": 0,
               "changed_mind": 0,
-              "not_received": 0,
               "damaged": 1
             }
           },
@@ -176,11 +178,11 @@
         },
         "bridge": {
           "cached": false,
-          "latency_ms": 85.65,
+          "latency_ms": 85.67,
           "cost_usd": 0.000022134000000000002,
           "attempts": 1,
-          "request_id": "req_01a0c415e1de72bbb5f1c0c4787546af",
-          "call_id": "ee44526e-2"
+          "request_id": "req_01a0c41e58977ece992494acd1611f4a",
+          "call_id": "e6946b99-2"
         }
       },
       "checks": [
@@ -291,14 +293,14 @@
             "probabilities": {
               "0": 0,
               "1": 0,
-              "2": 0.01,
-              "3": 0.99
+              "2": 0,
+              "3": 1
             }
           },
           "c": {
             "type": "score",
             "score": 1.07,
-            "confidence": 0.9,
+            "confidence": 0.91,
             "legend": {
               "0": "Unrelated",
               "1": "Same topic but does not answer it",
@@ -314,8 +316,8 @@
           },
           "d": {
             "type": "score",
-            "score": 0.13,
-            "confidence": 0.87,
+            "score": 0.09,
+            "confidence": 0.91,
             "legend": {
               "0": "Unrelated",
               "1": "Same topic but does not answer it",
@@ -323,8 +325,8 @@
               "3": "Directly and completely answers it"
             },
             "probabilities": {
-              "0": 0.87,
-              "1": 0.13,
+              "0": 0.91,
+              "1": 0.09,
               "2": 0,
               "3": 0
             }
@@ -336,11 +338,11 @@
         },
         "bridge": {
           "cached": false,
-          "latency_ms": 142.55,
+          "latency_ms": 118.22,
           "cost_usd": 0.000027132,
           "attempts": 1,
-          "request_id": "req_01a0c415e235712092fc1ef28fcbe97a",
-          "call_id": "ee44526e-3"
+          "request_id": "req_01a0c41e58f17a6dad2dc5ed47b81e4e",
+          "call_id": "e6946b99-3"
         }
       },
       "checks": [
@@ -395,11 +397,11 @@
         },
         "bridge": {
           "cached": false,
-          "latency_ms": 109.45,
+          "latency_ms": 89.52,
           "cost_usd": 0.000015624,
           "attempts": 1,
-          "request_id": "req_01a0c415e2c27fd59801b3f3735958af",
-          "call_id": "ee44526e-4"
+          "request_id": "req_01a0c41e596b7f1db55fa57da2aaee15",
+          "call_id": "e6946b99-4"
         }
       },
       "checks": [
@@ -450,11 +452,11 @@
           },
           "requests_refund": {
             "type": "noul",
-            "noul": 0.96
+            "noul": 0.97
           },
           "churn_risk": {
             "type": "noul",
-            "noul": 0.88
+            "noul": 0.86
           }
         },
         "usage": {
@@ -463,11 +465,11 @@
         },
         "bridge": {
           "cached": false,
-          "latency_ms": 87.69,
+          "latency_ms": 119.23,
           "cost_usd": 0.000014952000000000002,
           "attempts": 1,
-          "request_id": "req_01a0c415e33076fdbf370d40a2c460d5",
-          "call_id": "ee44526e-5"
+          "request_id": "req_01a0c41e59c07dab8e1a3c5f0bf72f35",
+          "call_id": "e6946b99-5"
         }
       },
       "checks": [
@@ -512,11 +514,11 @@
             "choice": "11 Jan",
             "confidence": 1,
             "probabilities": {
-              "none": 0,
-              "3 Jan": 0,
               "5 Jan": 0,
               "11 Jan": 1,
-              "25 Jan": 0
+              "none": 0,
+              "25 Jan": 0,
+              "3 Jan": 0
             }
           }
         },
@@ -526,11 +528,11 @@
         },
         "bridge": {
           "cached": false,
-          "latency_ms": 119.98,
+          "latency_ms": 111.29,
           "cost_usd": 0.000016632000000000003,
           "attempts": 1,
-          "request_id": "req_01a0c415e3887daf990cafe237bb350f",
-          "call_id": "ee44526e-6"
+          "request_id": "req_01a0c41e5a387bd0b9bc642fd2fecd33",
+          "call_id": "e6946b99-6"
         }
       },
       "checks": [
@@ -581,24 +583,24 @@
               "3": "Explains what changed and why"
             },
             "probabilities": {
-              "0": 0.95,
-              "1": 0.05,
+              "0": 0.96,
+              "1": 0.04,
               "2": 0,
               "3": 0
             }
           },
           "testability": {
             "type": "score",
-            "score": 0.21,
-            "confidence": 0.69,
+            "score": 0.19,
+            "confidence": 0.72,
             "legend": {
               "0": "No way to verify",
               "1": "Vague hint",
               "2": "Concrete steps or tests named"
             },
             "probabilities": {
-              "0": 0.79,
-              "1": 0.21,
+              "0": 0.82,
+              "1": 0.18,
               "2": 0
             }
           }
@@ -609,11 +611,11 @@
         },
         "bridge": {
           "cached": false,
-          "latency_ms": 89.58,
+          "latency_ms": 169.77,
           "cost_usd": 0.000016086,
           "attempts": 1,
-          "request_id": "req_01a0c415e40179bfa7dce3ffc0c3818f",
-          "call_id": "ee44526e-7"
+          "request_id": "req_01a0c41e5ab87f64aad2394ec25f54ce",
+          "call_id": "e6946b99-7"
         }
       },
       "checks": [
