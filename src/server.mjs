@@ -15,11 +15,14 @@
  * stderr. A stray console.log here corrupts the stream and the failure reads
  * as "server disconnected" with no clue why.
  */
+import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { cacheKey, openStore, questionFingerprint } from './store.mjs';
+import { FILTER_NAMES, VERDICTS, historyReport, reviewCall } from './history.mjs';
+import { HISTORY_MODES, cacheKey, openStore, questionFingerprint } from './store.mjs';
+import { startUi } from './ui.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
@@ -36,6 +39,9 @@ const DB_PATH = process.env.TYPESAFE_DB || join(HOME, 'jev.db');
 const USD_PER_MTOK = Number(process.env.TYPESAFE_USD_PER_MTOK || 0.042); // published Jev 1.13 input price
 const TTL_DAYS = Number(process.env.TYPESAFE_CACHE_TTL_DAYS || 7);
 const MAX_ENTRIES = Number(process.env.TYPESAFE_CACHE_MAX || 20000);
+const HISTORY = (process.env.TYPESAFE_HISTORY || 'full').trim().toLowerCase();
+const HISTORY_DAYS = Number(process.env.TYPESAFE_HISTORY_DAYS || 30);
+const HISTORY_MAX = Number(process.env.TYPESAFE_HISTORY_MAX || 10000);
 const SERVER = { name: 'jev-bridge', version: PKG.version };
 const FALLBACK_PROTOCOL = '2025-06-18';
 
@@ -68,7 +74,11 @@ export function loadKey() {
 
 /* ── HTTP ────────────────────────────────────────────────────────────────── */
 
-/** 429 and 529 are the documented back-off statuses; honour retry-after when present. */
+/**
+ * 429 and 529 are the documented back-off statuses; honour retry-after when
+ * present. The response carries `attempts`, so a slow call can be told apart
+ * from one that spent its time waiting out a rate limit.
+ */
 async function request(path, init, retries = 3) {
   let delay = 500;
   for (let attempt = 0; ; attempt++) {
@@ -88,7 +98,7 @@ async function request(path, init, retries = 3) {
       delay *= 2;
       continue;
     }
-    return res;
+    return Object.assign(res, { attempts: attempt + 1 });
   }
 }
 
@@ -104,7 +114,7 @@ function liveTransport() {
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body,
     });
-    return { status: res.status, text: await res.text() };
+    return { status: res.status, text: await res.text(), attempts: res.attempts };
   };
 }
 
@@ -179,8 +189,13 @@ export function validateQuestions(questions) {
  * `transport` and `now` are injected so the whole path can be tested without
  * spending tokens. An error is never cached: a 529 today must not become a
  * week of stored failure.
+ *
+ * Every outcome — hit, answer, rejection, a network that never answered — is
+ * recorded twice: in the usage log, and in the history a reviewer reads later.
+ * Both are only queued here; the store writes them after this answer has gone
+ * back, so recording costs the caller nothing it can measure.
  */
-export async function askJev(args, { store, transport, now = Date.now, usdPerMtok = USD_PER_MTOK }) {
+export async function askJev(args, { store, transport, now = Date.now, usdPerMtok = USD_PER_MTOK, client = null }) {
   const { state, questions, model = DEFAULT_MODEL, cache = true } = args ?? {};
   if (state === undefined || state === null) throw new Error('`state` is required.');
   const bad = validateQuestions(questions);
@@ -191,22 +206,37 @@ export async function askJev(args, { store, transport, now = Date.now, usdPerMto
   const key = cacheKey(model, state, questions);
   const count = Object.keys(questions).length;
   const took = () => Math.round((performance.now() - clock) * 100) / 100;
+  const record = ({ answers, ...outcome }) => {
+    store.recordCall({ ts, requested_model: model, questions: count, ...outcome });
+    return store.recordHistory({ ts, client, requested_model: model, forced: cache === false, state, questions, answers, ...outcome });
+  };
+  const bridge = (facts, callId) => (callId ? { ...facts, call_id: callId } : facts);
 
   if (cache !== false) {
     const hit = store.getCached(key, ts);
     const answers = hit && rebuildAnswers(questions, hit.answers_by_question);
     if (answers) {
       const saved = hit.usage?.input_tokens ?? 0;
-      store.recordCall({ ts, requested_model: model, resolved_model: hit.model, cached: 1, questions: count,
-        saved_input_tokens: saved, saved_usd: priceOf(saved, usdPerMtok), latency_ms: took(), status: 200 });
-      return { model: hit.model, answers, usage: hit.usage, bridge: { cached: true, latency_ms: took(), cost_usd: 0 } };
+      const latency = took();
+      const id = record({ resolved_model: hit.model, cached: 1, saved_input_tokens: saved, saved_usd: priceOf(saved, usdPerMtok),
+        latency_ms: latency, status: 200, answers });
+      return { model: hit.model, answers, usage: hit.usage, bridge: bridge({ cached: true, latency_ms: latency, cost_usd: 0 }, id) };
     }
   }
 
-  const res = await transport(JSON.stringify({ state, model, questions }));
+  let res;
+  try {
+    res = await transport(JSON.stringify({ state, model, questions }));
+  } catch (err) {
+    // A timeout or a refused connection is the slowest outcome of all, so it is
+    // recorded too — as status 0, since no HTTP status ever arrived.
+    record({ cached: 0, latency_ms: took(), status: 0, error: String(err?.message || err) });
+    throw err;
+  }
   if (res.status !== 200) {
-    store.recordCall({ ts, requested_model: model, cached: 0, questions: count, latency_ms: took(), status: res.status });
-    throw new Error(describeFailure(res.status, res.text));
+    const failure = describeFailure(res.status, res.text);
+    record({ cached: 0, latency_ms: took(), status: res.status, attempts: res.attempts, error: failure });
+    throw new Error(failure);
   }
 
   const body = JSON.parse(res.text);
@@ -214,9 +244,10 @@ export async function askJev(args, { store, transport, now = Date.now, usdPerMto
   const cost = priceOf(input, usdPerMtok);
   store.noteResolution(model, body.model, ts);
   store.putCached(key, model, { model: body.model, usage: body.usage, answers_by_question: byQuestion(questions, body.answers) }, ts);
-  store.recordCall({ ts, requested_model: model, resolved_model: body.model, cached: 0, questions: count,
-    input_tokens: input, output_tokens: body.usage?.output_tokens ?? 0, latency_ms: took(), cost_usd: cost, status: 200 });
-  return { ...body, bridge: { cached: false, latency_ms: took(), cost_usd: cost } };
+  const latency = took();
+  const id = record({ resolved_model: body.model, cached: 0, input_tokens: input, output_tokens: body.usage?.output_tokens ?? 0,
+    latency_ms: latency, cost_usd: cost, status: 200, attempts: res.attempts, answers: body.answers });
+  return { ...body, bridge: bridge({ cached: false, latency_ms: latency, cost_usd: cost }, id) };
 }
 
 /**
@@ -274,7 +305,8 @@ const TOOLS = [
       'are NOT sent to the model, so put the full meaning in `instructions`. Reference nested state with ' +
       'backticked paths such as `ticket.messages[0].text`. Typed output guarantees the interface, not truth.\n\n' +
       'Identical requests are answered from a local cache at no cost; `bridge.cached` says which happened, and ' +
-      '`bridge.cost_usd` is what THIS call cost. On a cache hit `usage` describes the original call.',
+      '`bridge.cost_usd` is what THIS call cost. On a cache hit `usage` describes the original call. ' +
+      '`bridge.call_id` names this call in jev_history; pass it to jev_review once you learn whether the answer was right.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -332,6 +364,7 @@ const TOOLS = [
             cached: { type: 'boolean' },
             latency_ms: { type: 'number' },
             cost_usd: { type: 'number' },
+            call_id: { type: 'string', description: 'This call in jev_history. Absent when history is off.' },
           },
           required: ['cached'],
         },
@@ -374,6 +407,48 @@ const TOOLS = [
     },
   },
   {
+    name: 'jev_history',
+    title: 'Past Jev calls: speed, cost and whether they were right',
+    description:
+      'Look back at earlier jev_ask calls, from the bridge\'s local history. Without `id`: stats for the window ' +
+      '(latency percentiles, cache hits, retries, live calls that re-sent a state and should have been batched, ' +
+      'reviewed accuracy) and the matching calls, each with the start of its state and its answers on one line. ' +
+      'With `id`: that call in full — state, questions, answers, timing, cost and review. ' +
+      'Use filter "uncertain" to see the calls Jev was least sure of, and "slow" for the slowest.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'A `bridge.call_id`, or an id from this list. Returns that call in full.' },
+        days: { type: 'integer', minimum: 1, maximum: 3650, description: 'Window in days. Default 7.' },
+        filter: { type: 'string', enum: FILTER_NAMES, description: 'Which calls to list. Default "all", newest first.' },
+        below: { type: 'number', minimum: 0, maximum: 1, description: 'The certainty cut for "uncertain". Default 0.6.' },
+        q: { type: 'string', description: 'Only calls whose state or answers contain this text.' },
+        limit: { type: 'integer', minimum: 1, maximum: 200, description: 'Most calls to list. Default 20.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'jev_review',
+    title: 'Record whether a Jev answer was right',
+    description:
+      'Mark a past call correct, partial or incorrect once the truth is known — the user corrected it, or the ' +
+      'evidence says otherwise. `expected` records what the answers should have been, by question id; `note` says ' +
+      'why. `verdict: null` withdraws a review. Reviewed calls are never pruned, and give jev_history its accuracy.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'The `bridge.call_id` of the call being judged.' },
+        verdict: { type: ['string', 'null'], enum: [...VERDICTS, null] },
+        note: { type: 'string', description: 'Why, in a sentence.' },
+        expected: { type: 'object', description: 'Question id -> the answer it should have been, e.g. {"department": "technical"}.' },
+      },
+      required: ['id', 'verdict'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'jev_models',
     title: 'List TypeSafe models',
     description:
@@ -384,6 +459,8 @@ const TOOLS = [
 ];
 
 /* ── JSON-RPC plumbing ───────────────────────────────────────────────────── */
+
+const missing = (id) => { throw new Error(`No call "${id}" in the history. It may have been pruned, or history may be off.`); };
 
 const send = (msg) => process.stdout.write(JSON.stringify(msg) + '\n');
 const ok = (id, result) => send({ jsonrpc: '2.0', id, result });
@@ -397,13 +474,15 @@ function makeHandler(deps) {
     switch (method) {
       case 'initialize': {
         const requested = params?.protocolVersion;
+        deps.client = typeof params?.clientInfo?.name === 'string' ? params.clientInfo.name.slice(0, 100) : null;
         return ok(id, {
           protocolVersion: typeof requested === 'string' ? requested : FALLBACK_PROTOCOL,
           capabilities: { tools: { listChanged: false } },
           serverInfo: SERVER,
           instructions:
             'TypeSafe System One (Jev). Use jev_ask for calibrated typed judgments over a state. ' +
-            'Batch all independent questions into a single jev_ask call. jev_usage reports what it has cost.',
+            'Batch all independent questions into a single jev_ask call. jev_usage reports what it has cost; ' +
+            'jev_history shows past calls, and jev_review records whether an answer turned out right.',
         });
       }
       case 'notifications/initialized':
@@ -422,6 +501,20 @@ function makeHandler(deps) {
           }
           if (name === 'jev_usage') {
             const result = deps.store.summary({ days: args?.days ?? 7, now: Date.now() });
+            return ok(id, { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result });
+          }
+          if (name === 'jev_history') {
+            const result = args?.id
+              ? deps.store.getHistory(args.id) ?? missing(args.id)
+              : historyReport(deps.store, { days: args?.days ?? 7, filter: args?.filter ?? 'all', below: args?.below ?? 0.6,
+                q: args?.q, limit: Math.min(Math.max(1, args?.limit ?? 20), 200), now: Date.now() });
+            return ok(id, { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result });
+          }
+          if (name === 'jev_review') {
+            const call = reviewCall(deps.store, args?.id, { verdict: args?.verdict ?? null, note: args?.note ?? null,
+              expected: args?.expected ?? null });
+            // Echo the review, not the whole call: the caller already has the state.
+            const result = { id: call.id, verdict: call.verdict, note: call.note, expected: call.expected, reviewed_at: call.reviewed_at };
             return ok(id, { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result });
           }
           if (name === 'jev_models') {
@@ -490,6 +583,16 @@ function serve(deps) {
 
 /* ── entry ───────────────────────────────────────────────────────────────── */
 
+/** Best effort: if no browser opens, the address is already printed. */
+function openInBrowser(url) {
+  const [cmd, ...args] = process.platform === 'darwin' ? ['open', url]
+    : process.platform === 'win32' ? ['cmd', '/c', 'start', '""', url]
+    : ['xdg-open', url];
+  try {
+    spawn(cmd, args, { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
+  } catch { /* printed above */ }
+}
+
 /** SQLite is optional: an older Node still runs the bridge, just without persistence. */
 async function makeStore() {
   let sqlite = null;
@@ -498,16 +601,25 @@ async function makeStore() {
   } catch (err) {
     log(`node:sqlite unavailable on Node ${process.version} — caching in memory for this session only`);
   }
-  const options = { sqlite, ttlMs: TTL_DAYS * 86_400_000, maxEntries: MAX_ENTRIES };
+  // An unrecognised mode fails safe: better to keep nothing than to keep content
+  // someone was trying to switch off.
+  const history = HISTORY_MODES.includes(HISTORY) ? HISTORY : 'off';
+  if (history !== HISTORY) log(`TYPESAFE_HISTORY="${HISTORY}" is not one of ${HISTORY_MODES.join(', ')} — keeping no history`);
+  const options = { sqlite, ttlMs: TTL_DAYS * 86_400_000, maxEntries: MAX_ENTRIES, history, historyDays: HISTORY_DAYS, historyMax: HISTORY_MAX };
+  let store;
   try {
     if (sqlite) mkdirSync(dirname(DB_PATH), { recursive: true, mode: 0o700 });
-    const store = openStore(DB_PATH, options);
+    store = openStore(DB_PATH, options);
     store.prune(Date.now());
-    return store;
   } catch (err) {
     log(`could not open ${DB_PATH} (${err.message}) — caching in memory for this session only`);
-    return openStore(null, { ...options, sqlite: null });
+    store = openStore(null, { ...options, sqlite: null });
   }
+  // Usage and history are written just after each answer. Whatever is still
+  // queued when the process ends — a client closing its pipe, --selftest — is
+  // written here; node:sqlite is synchronous, so it completes before exit.
+  process.on('exit', () => store.flush());
+  return store;
 }
 
 const HELP = `jev-bridge ${PKG.version} — an MCP server for TypeSafe's Jev
@@ -516,13 +628,18 @@ Usage:
   jev-bridge                 run as an MCP server over stdio (what an MCP client does)
   jev-bridge --selftest      call the live API once, bypassing the cache
   jev-bridge --stats [days]  report calls, cache hits, tokens and cost (default 7 days)
-  jev-bridge --clear-cache   delete stored answers, keep the usage history
+  jev-bridge --ui [port]     open the call-history dashboard in a browser (--no-open to only print its address)
+  jev-bridge --history [days] [filter]
+                             print past calls and their stats; filters: ${FILTER_NAMES.join(', ')}
+  jev-bridge --clear-cache   delete stored answers, keep the usage log and history
+  jev-bridge --clear-history delete the call history, keep the cache and the usage log
   jev-bridge --version       print the version
   jev-bridge --help          print this
 
-Key:   TYPESAFE_API_KEY, or TYPESAFE_API_KEY_FILE, or ${join(HOME, '.env')}
-Data:  ${DB_PATH}
-Docs:  https://github.com/lhviet/jev-bridge#readme`;
+Key:     TYPESAFE_API_KEY, or TYPESAFE_API_KEY_FILE, or ${join(HOME, '.env')}
+Data:    ${DB_PATH}
+History: ${HISTORY} (TYPESAFE_HISTORY=full|meta|off), ${HISTORY_DAYS} days
+Docs:    https://github.com/lhviet/jev-bridge#readme`;
 
 async function main() {
   const argv0 = process.argv.slice(2);
@@ -530,6 +647,9 @@ async function main() {
   if (argv0.includes('--version') || argv0.includes('-v')) { process.stdout.write(PKG.version + '\n'); process.exit(0); }
 
   const store = await makeStore();
+  // By default a signal ends the process without an 'exit' event, which would
+  // drop the few records still waiting to be written. Exiting routes through it.
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.once(signal, () => process.exit(0));
   const deps = { store, transport: liveTransport() };
   const argv = process.argv.slice(2);
 
@@ -559,8 +679,32 @@ async function main() {
   }
 
   if (argv.includes('--clear-cache')) {
-    process.stderr.write(`cleared ${store.clearCache()} cached answers; the usage log is kept\n`);
+    process.stderr.write(`cleared ${store.clearCache()} cached answers; the usage log and history are kept\n`);
     process.exit(0);
+  }
+
+  if (argv.includes('--clear-history')) {
+    process.stderr.write(`cleared ${store.clearHistory()} calls from the history; the cache and usage log are kept\n`);
+    process.exit(0);
+  }
+
+  if (argv.includes('--history')) {
+    // Either order: `--history 30 uncertain` or `--history uncertain`.
+    const rest = argv.slice(argv.indexOf('--history') + 1, argv.indexOf('--history') + 3);
+    const days = Number(rest.find((a) => Number(a) > 0)) || 7;
+    const filter = rest.find((a) => FILTER_NAMES.includes(a)) ?? 'all';
+    const report = historyReport(store, { days, filter, now: Date.now() });
+    process.stderr.write(JSON.stringify(report, null, 2) + '\n');
+    process.exit(0);
+  }
+
+  if (argv.includes('--ui')) {
+    const port = Number(argv[argv.indexOf('--ui') + 1]) || 0;
+    const ui = await startUi({ store, port });
+    process.stderr.write(`jev-bridge dashboard: ${ui.url}\n(history: ${store.historyMode}, ${store.kind} store at ${store.kind === 'sqlite' ? DB_PATH : 'memory'}) — Ctrl-C to stop\n`);
+    if (store.kind !== 'sqlite') process.stderr.write('note: without node:sqlite this dashboard sees only its own process, so it will be empty\n');
+    if (!argv.includes('--no-open')) openInBrowser(ui.url);
+    return;
   }
 
   log(`ready — ${BASE}, model ${DEFAULT_MODEL}, ${store.kind} store, key ${loadKey() ? 'loaded' : 'MISSING'}`);

@@ -16,6 +16,10 @@ reading this first will save you a round of review.
 3. **Keep policy out of the bridge.** Thresholds and decisions belong to the
    caller. jev-bridge returns judgments; it does not act on them.
 4. **Never cache a failure.** Only a 200 is stored.
+5. **Recording never slows an answer.** The usage log and the call history go
+   through the store's write-behind queue, and are written once the bridge is
+   idle. Do not add a database write to the path that produces a reply; the
+   test "the answer is returned before anything about it is written" guards it.
 
 ## Getting set up
 

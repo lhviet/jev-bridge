@@ -1,0 +1,894 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Jev call history</title>
+<style nonce="__NONCE__">
+:root {
+  color-scheme: light;
+  --paper: #EDF0F4;
+  --surface: #F8FAFC;
+  --raised: #FFFFFF;
+  --ink: #16202E;
+  --ink-soft: #5A6B80;
+  --ink-faint: #8B99AB;
+  --rule: #C9D2DD;
+  --rule-soft: #DCE3EB;
+  --accent: #2540D9;
+  --accent-ink: #1B2FA6;
+  --accent-wash: #E5E9FB;
+  --bad: #D03B3B;
+  --bad-ink: #A12626;
+  --bad-wash: #FBE9E9;
+  --good: #0CA30C;
+  --good-ink: #006300;
+  --good-wash: #E3F4E3;
+  --warn-ink: #9A3412;
+  --warn-wash: #FBEAE2;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --radius: 4px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --paper: #0F141B;
+    --surface: #161D27;
+    --raised: #1B2330;
+    --ink: #E7ECF3;
+    --ink-soft: #A3B0C2;
+    --ink-faint: #6B7A8E;
+    --rule: #2B3645;
+    --rule-soft: #222B37;
+    --accent: #6F83F4;
+    --accent-ink: #AEB9FA;
+    --accent-wash: #1E2747;
+    --bad: #D03B3B;
+    --bad-ink: #F08A8A;
+    --bad-wash: #3A1D22;
+    --good: #0CA30C;
+    --good-ink: #5FD35F;
+    --good-wash: #173320;
+    --warn-ink: #F0A36B;
+    --warn-wash: #3A2519;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.5 var(--sans);
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code, pre, .mono { font-family: var(--mono); font-size: 0.8667em; }
+h1, h2, h3 { margin: 0; line-height: 1.25; }
+.wrap { max-width: 1320px; margin: 0 auto; padding: 0 24px 48px; }
+
+/* ── top ───────────────────────────────────────────────────────────── */
+.top {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px;
+  padding: 22px 0 18px;
+}
+.top h1 { font-size: 22px; font-weight: 650; letter-spacing: -0.01em; margin-right: auto; }
+.top label { color: var(--ink-soft); font-size: 14px; display: flex; align-items: center; gap: 8px; }
+select, input[type="search"], textarea {
+  background: var(--raised); border: 1px solid var(--rule); border-radius: var(--radius);
+  padding: 6px 10px;
+}
+.btn {
+  background: var(--raised); border: 1px solid var(--rule); border-radius: var(--radius);
+  padding: 6px 14px; cursor: pointer;
+}
+.btn:hover { border-color: var(--ink-faint); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.quiet { border-color: transparent; background: none; color: var(--ink-soft); }
+.btn.quiet:hover { color: var(--ink); }
+.stamp { color: var(--ink-faint); font-size: 13px; }
+
+/* ── figures ───────────────────────────────────────────────────────── */
+.figures {
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+  background: var(--surface); border: 1px solid var(--rule-soft); border-radius: var(--radius);
+}
+.fig { padding: 16px 18px 18px; border-left: 1px solid var(--rule-soft); min-width: 0; }
+.fig:first-child { border-left: 0; }
+.fig .label { font-size: 13px; color: var(--ink-soft); }
+.fig .value { font-size: 28px; font-weight: 620; letter-spacing: -0.02em; margin: 2px 0 2px; white-space: nowrap; }
+.fig .value small { font-size: 15px; font-weight: 500; color: var(--ink-soft); letter-spacing: 0; margin-left: 2px; }
+.fig .sub { font-size: 13px; color: var(--ink-soft); }
+.fig.flag .value { color: var(--warn-ink); }
+
+/* ── chart ─────────────────────────────────────────────────────────── */
+.panel {
+  background: var(--surface); border: 1px solid var(--rule-soft); border-radius: var(--radius);
+  padding: 18px 20px; margin-top: 16px;
+}
+.panel-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin-bottom: 8px; }
+.panel-head h2 { font-size: 16px; font-weight: 620; }
+.panel-head p { margin: 0; color: var(--ink-soft); font-size: 13px; }
+.legend { display: flex; gap: 16px; margin-left: auto; font-size: 13px; color: var(--ink-soft); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.key-ok { fill: var(--accent); }
+.key-err { fill: var(--bad); }
+.chart-box { position: relative; }
+.chart-box svg { display: block; width: 100%; overflow: visible; }
+.chart-box svg:focus-visible { outline-offset: 4px; }
+.axis text, .ref text { fill: var(--ink-soft); font-size: 11px; font-variant-numeric: tabular-nums; }
+.grid line { stroke: var(--rule-soft); stroke-width: 1; }
+.base { stroke: var(--rule); stroke-width: 1; }
+.ref line { stroke: var(--ink-faint); stroke-width: 1; }
+.pt { stroke: var(--surface); stroke-width: 2; }
+.pt.ok { fill: var(--accent); }
+.pt.err { fill: var(--bad); }
+.pt.sel { stroke: var(--ink); }
+.hit { fill: transparent; cursor: pointer; }
+.tip {
+  position: absolute; pointer-events: none; z-index: 5; min-width: 180px; max-width: 280px;
+  background: var(--raised); border: 1px solid var(--rule); border-radius: var(--radius);
+  padding: 8px 10px; font-size: 13px; box-shadow: 0 4px 16px rgba(10, 20, 40, 0.12);
+}
+.tip strong { font-size: 15px; display: block; }
+.tip .muted { color: var(--ink-soft); }
+.empty-chart { color: var(--ink-soft); font-size: 14px; padding: 28px 0; }
+
+/* ── list + detail ─────────────────────────────────────────────────── */
+.work { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; align-items: start; }
+.list { padding: 0; overflow: hidden; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--rule-soft); }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip {
+  border: 1px solid var(--rule); background: var(--raised); border-radius: 999px;
+  padding: 3px 11px; font-size: 13px; cursor: pointer; color: var(--ink-soft);
+}
+.chip:hover { color: var(--ink); border-color: var(--ink-faint); }
+.chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+.chip .n { opacity: 0.7; margin-left: 4px; font-variant-numeric: tabular-nums; }
+.filters input[type="search"] { margin-left: auto; min-width: 200px; flex: 0 1 260px; }
+.count { color: var(--ink-soft); font-size: 13px; padding: 10px 16px 0; }
+
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+col.c-when { width: 104px; }
+col.c-sure { width: 76px; }
+col.c-time { width: 84px; }
+col.c-cost { width: 96px; }
+col.c-review { width: 112px; }
+th { text-align: left; font-size: 12px; font-weight: 500; color: var(--ink-soft); padding: 8px 10px; border-bottom: 1px solid var(--rule-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+td { padding: 10px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; font-size: 14px; overflow: hidden; }
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+th:first-child, td:first-child { padding-left: 16px; }
+th:last-child, td:last-child { padding-right: 16px; }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: var(--raised); }
+tbody tr[aria-selected="true"] { background: var(--accent-wash); box-shadow: inset 3px 0 0 var(--accent); }
+.when { white-space: nowrap; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.asked { min-width: 0; }
+.asked .preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.asked .digest { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.asked .fail { font-size: 13px; color: var(--bad-ink); margin-top: 3px; }
+.asked .hidden { color: var(--ink-faint); font-style: italic; }
+.when-inline { display: none; font-size: 12px; color: var(--ink-soft); margin-bottom: 2px; }
+.tag { display: inline-block; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 3px; background: var(--rule-soft); color: var(--ink-soft); margin-top: 3px; }
+.tag.warn { background: var(--warn-wash); color: var(--warn-ink); }
+.sure { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.meter { width: 40px; height: 4px; background: var(--rule-soft); border-radius: 2px; overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--ink-faint); border-radius: 2px; }
+.low { color: var(--warn-ink); }
+.low .meter i { background: var(--warn-ink); }
+.verdict { font-size: 13px; }
+.verdict .icon { font-weight: 700; margin-right: 4px; }
+.v-correct .icon { color: var(--good); }
+.v-partial .icon { color: var(--warn-ink); }
+.v-incorrect .icon { color: var(--bad); }
+.none { color: var(--ink-faint); }
+.list-empty { padding: 36px 16px; color: var(--ink-soft); }
+.list-empty strong { color: var(--ink); display: block; margin-bottom: 4px; }
+
+.detail { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
+.detail .placeholder { color: var(--ink-soft); padding: 24px 0; }
+.detail header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 12px; }
+.detail header h2 { font-size: 16px; font-weight: 620; }
+.detail header time { color: var(--ink-soft); font-size: 13px; }
+.facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px 16px; margin: 0 0 18px; }
+.facts div { min-width: 0; }
+.facts dt { font-size: 12px; color: var(--ink-soft); }
+.facts dd { margin: 0; font-size: 14px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.detail h3 { font-size: 13px; font-weight: 600; color: var(--ink-soft); margin: 18px 0 8px; }
+pre.state {
+  margin: 0; padding: 12px; background: var(--raised); border: 1px solid var(--rule-soft); border-radius: var(--radius);
+  white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; line-height: 1.55;
+}
+pre.state.open { max-height: none; }
+.note-line { color: var(--ink-soft); font-size: 13px; margin: 6px 0 0; }
+.error-box { background: var(--bad-wash); color: var(--bad-ink); border-radius: var(--radius); padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+
+.q { padding: 12px 0 14px; border-top: 1px solid var(--rule-soft); }
+.q:first-of-type { border-top: 0; padding-top: 4px; }
+.q-head { display: flex; align-items: baseline; gap: 8px; }
+.q-head code { font-weight: 600; }
+.q-head .type { font-size: 12px; color: var(--ink-soft); }
+.q-head .conf { margin-left: auto; font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.q-head .conf.low { color: var(--warn-ink); }
+.instr { margin: 4px 0 10px; font-size: 14px; }
+.opts { display: grid; gap: 2px; }
+.opt {
+  display: grid; grid-template-columns: minmax(84px, 34%) minmax(0, 1fr) 44px; align-items: center; gap: 10px;
+  width: 100%; text-align: left; background: none; border: 1px solid transparent; border-radius: var(--radius);
+  padding: 4px 6px; cursor: pointer;
+}
+.opt:hover { background: var(--raised); border-color: var(--rule-soft); }
+.opt .name { font-size: 13.5px; overflow-wrap: anywhere; }
+.opt .name small { display: block; color: var(--ink-soft); font-size: 12px; line-height: 1.35; }
+.opt .track { height: 8px; background: var(--rule-soft); border-radius: 4px; overflow: hidden; }
+.opt .track i { display: block; height: 100%; background: var(--ink-faint); border-radius: 0 4px 4px 0; }
+.opt .p { text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; color: var(--ink-soft); }
+.opt.picked .name { font-weight: 650; }
+.opt.picked .track i { background: var(--accent); }
+.opt.picked .p { color: var(--ink); font-weight: 600; }
+.opt.expected { border-color: var(--good); background: var(--good-wash); }
+.opt.expected.picked { border-color: var(--good); }
+.opt .mark { font-size: 11px; color: var(--good-ink); font-weight: 600; margin-left: 6px; white-space: nowrap; }
+.score-line { font-size: 13px; color: var(--ink-soft); margin: 6px 6px 0; }
+
+.review { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--rule); }
+.review h3 { margin-top: 0; }
+.verdicts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.verdicts button { border: 1px solid var(--rule); background: var(--raised); border-radius: var(--radius); padding: 6px 12px; cursor: pointer; }
+.verdicts button .icon { font-weight: 700; margin-right: 6px; }
+.verdicts button[aria-pressed="true"][data-v="correct"] { border-color: var(--good); background: var(--good-wash); }
+.verdicts button[aria-pressed="true"][data-v="partial"] { border-color: var(--warn-ink); background: var(--warn-wash); }
+.verdicts button[aria-pressed="true"][data-v="incorrect"] { border-color: var(--bad); background: var(--bad-wash); }
+.verdicts [data-v="correct"] .icon { color: var(--good); }
+.verdicts [data-v="partial"] .icon { color: var(--warn-ink); }
+.verdicts [data-v="incorrect"] .icon { color: var(--bad); }
+.expected-list { font-size: 13px; color: var(--ink-soft); margin: 0 0 10px; }
+.expected-list code { color: var(--ink); }
+.review textarea { width: 100%; min-height: 64px; resize: vertical; }
+.review .actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.review .status { font-size: 13px; color: var(--ink-soft); }
+.review .status.err { color: var(--bad-ink); }
+.keys { font-size: 12px; color: var(--ink-faint); margin-top: 14px; }
+.keys kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; color: var(--ink-soft); }
+
+.banner { margin-top: 16px; padding: 12px 16px; border-radius: var(--radius); background: var(--bad-wash); color: var(--bad-ink); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.stale { opacity: 0.6; transition: opacity 120ms; }
+
+@media (max-width: 1100px) {
+  .figures { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .fig:nth-child(4) { border-left: 0; }
+  .fig:nth-child(n+4) { border-top: 1px solid var(--rule-soft); }
+}
+@media (max-width: 1280px) {
+  .col-cost { display: none; }
+}
+@media (max-width: 900px) {
+  .work { grid-template-columns: minmax(0, 1fr); }
+  .detail { position: static; max-height: none; }
+  .col-cost { display: none; }
+}
+@media (max-width: 560px) {
+  .wrap { padding: 0 16px 32px; }
+  .figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fig { padding: 12px 14px 14px; }
+  .fig:nth-child(n) { border-left: 1px solid var(--rule-soft); border-top: 1px solid var(--rule-soft); }
+  .fig:nth-child(odd) { border-left: 0; }
+  .fig:nth-child(-n+2) { border-top: 0; }
+  .fig .value { font-size: 22px; }
+  .legend { margin-left: 0; }
+  .filters input[type="search"] { margin-left: 0; flex: 1 1 100%; }
+  .col-sure, .col-when { display: none; }
+  .when-inline { display: block; }
+  col.c-time { width: 76px; }
+  col.c-review { width: 36px; }
+  .verdict .word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  th:first-child, td:first-child { padding-left: 12px; }
+  th:last-child, td:last-child { padding-right: 12px; }
+  .opt { grid-template-columns: minmax(72px, 38%) minmax(0, 1fr) 40px; }
+}
+@media (hover: none) { .keys { display: none; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>Jev call history</h1>
+    <label>Show
+      <select id="days">
+        <option value="1">the last 24 hours</option>
+        <option value="7" selected>the last 7 days</option>
+        <option value="30">the last 30 days</option>
+        <option value="90">the last 90 days</option>
+        <option value="3650">everything kept</option>
+      </select>
+    </label>
+    <button class="btn" id="refresh" type="button">Refresh</button>
+    <span class="stamp" id="stamp" aria-live="polite"></span>
+  </div>
+
+  <div id="banner" class="banner" hidden></div>
+
+  <section class="figures" id="figures" aria-label="Summary of the selected period"></section>
+
+  <section class="panel" aria-labelledby="chart-title">
+    <div class="panel-head">
+      <h2 id="chart-title">How long live calls took</h2>
+      <p>One dot per call that went to the API. Cached answers take well under a millisecond and are left out.</p>
+      <div class="legend" aria-hidden="true">
+        <span><svg width="12" height="12"><circle class="key-ok" cx="6" cy="6" r="4"/></svg>Answered</span>
+        <span><svg width="12" height="12"><rect class="key-err" x="2" y="2" width="8" height="8" transform="rotate(45 6 6)"/></svg>Failed</span>
+      </div>
+    </div>
+    <div class="chart-box" id="chart"></div>
+  </section>
+
+  <div class="work">
+    <section class="panel list" aria-labelledby="list-title">
+      <h2 id="list-title" class="sr-only">Calls</h2>
+      <div class="filters">
+        <div class="chips" id="chips" role="group" aria-label="Show calls"></div>
+        <input type="search" id="q" placeholder="Search states and answers" aria-label="Search states and answers">
+      </div>
+      <div class="count" id="count"></div>
+      <div id="list"></div>
+    </section>
+
+    <aside class="panel detail" id="detail" aria-label="The selected call">
+      <p class="placeholder">Choose a call to see what was asked, how Jev answered, and to record whether it was right.</p>
+    </aside>
+  </div>
+</div>
+<div class="sr-only" id="announce" aria-live="polite"></div>
+
+<script nonce="__NONCE__">
+(() => {
+  'use strict';
+
+  /* ── access ─────────────────────────────────────────────────────── */
+  // The token stays in the address so a reload works; it lasts as long as the
+  // `jev-bridge --ui` process, and no-referrer keeps it from leaking onward.
+  const token = new URLSearchParams(location.search).get('token');
+
+  const $ = (id) => document.getElementById(id);
+  const BELOW = 0.6;
+  const state = { days: 7, filter: 'all', q: '', selected: null, rows: [], overview: null, call: null, draft: null };
+
+  try {
+    const saved = JSON.parse(localStorage.getItem('jev-ui') || '{}');
+    if ([1, 7, 30, 90, 3650].includes(saved.days)) state.days = saved.days;
+  } catch { /* first visit, or storage blocked */ }
+  $('days').value = String(state.days);
+
+  async function api(path, init = {}) {
+    const res = await fetch(path, { ...init, headers: { ...(init.headers || {}), 'x-jev-token': token || '' } });
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 401) throw new Error('The access token is missing or out of date. Open the address `jev-bridge --ui` printed.');
+    if (!res.ok) throw new Error(body.error || `Request failed (${res.status}).`);
+    return body;
+  }
+
+  /* ── formatting ─────────────────────────────────────────────────── */
+  const ms = (v) => v == null ? '—' : v < 1 ? `${v.toFixed(2)} ms` : v < 1000 ? `${Math.round(v)} ms` : `${(v / 1000).toFixed(v < 10000 ? 2 : 1)} s`;
+  const usd = (v) => {
+    if (!v) return '$0';
+    if (v >= 0.01) return `$${v.toFixed(2)}`;
+    return `$${Number(v.toPrecision(3)).toFixed(Math.min(12, Math.max(4, -Math.floor(Math.log10(v)) + 2)))}`;
+  };
+  const pct = (v) => v == null ? '—' : `${Math.round(v * 100)}%`;
+  const int = (v) => (v ?? 0).toLocaleString();
+  const p2 = (v) => typeof v === 'number' ? v.toFixed(2) : '—';
+  const sameDay = (a, b) => a.toDateString() === b.toDateString();
+  /** Today's calls by time alone; older ones by date, then time — on two lines in the list. */
+  const when = (ts, oneLine) => {
+    const d = new Date(ts), t = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (sameDay(d, new Date())) return t;
+    const day = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    return oneLine ? `${day}, ${t}` : [day, h('br'), t];
+  };
+  const fullWhen = (ts) => new Date(ts).toLocaleString([], { dateStyle: 'medium', timeStyle: 'medium' });
+
+  /** Builds DOM from data. Every string lands as text, never as markup: states are untrusted. */
+  function h(tag, attrs, ...kids) {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (v === null || v === undefined || v === false) continue;
+      if (k === 'class') el.className = v;
+      else if (k === 'style') Object.assign(el.style, v); // CSSOM, which the page's CSP allows; a style attribute it would block
+      else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+      else el.setAttribute(k, v === true ? '' : v);
+    }
+    el.append(...nodes(kids));
+    return el;
+  }
+  /** Children as DOM nodes: arrays flattened, empty values dropped, everything else as text. */
+  const nodes = (kids) => kids.flat(Infinity).filter((k) => k !== null && k !== undefined && k !== false)
+    .map((k) => (k instanceof Node ? k : document.createTextNode(String(k))));
+  const fill = (el, ...kids) => el.replaceChildren(...nodes(kids));
+  const svg = (tag, attrs) => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const [k, v] of Object.entries(attrs || {})) el.setAttribute(k, v);
+    return el;
+  };
+
+  const VERDICT = {
+    correct: { icon: '✓', word: 'Correct' },
+    partial: { icon: '◐', word: 'Partly right' },
+    incorrect: { icon: '✕', word: 'Wrong' },
+  };
+  const verdictCell = (v) => v
+    ? h('span', { class: `verdict v-${v}`, title: VERDICT[v].word }, h('span', { class: 'icon', 'aria-hidden': 'true' }, VERDICT[v].icon), h('span', { class: 'word' }, VERDICT[v].word))
+    : h('span', { class: 'verdict none', title: 'Not reviewed' }, h('span', { 'aria-hidden': 'true' }, '—'), h('span', { class: 'sr-only' }, 'Not reviewed'));
+
+  /* ── the figures ────────────────────────────────────────────────── */
+  function renderFigures(stats) {
+    const perf = stats.performance, eff = stats.efficiency, qual = stats.quality;
+    const fig = (label, value, unit, sub, flag) => h('div', { class: `fig${flag ? ' flag' : ''}` },
+      h('div', { class: 'label' }, label),
+      h('div', { class: 'value' }, value, unit ? h('small', null, unit) : null),
+      h('div', { class: 'sub' }, sub));
+    const live = perf.live_latency_ms;
+    const latency = live.p50 == null ? ['—', null] : live.p50 < 1000 ? [String(Math.round(live.p50)), 'ms'] : [(live.p50 / 1000).toFixed(2), 's'];
+    fill($('figures'),
+      fig('Typical live call', latency[0], latency[1], live.p95 == null ? 'No live calls yet' : `95% finished within ${ms(live.p95)}`),
+      fig('Answered from cache', pct(eff.hit_rate), null, `${int(stats.cache_hits)} of ${int(stats.calls)} calls`),
+      fig('Spent', usd(perf.cost_usd), null, `${int(perf.input_tokens)} input tokens`),
+      fig('Re-sent states', int(eff.resent_state_calls), null,
+        eff.resent_state_calls ? 'Live calls that could have joined an earlier one' : 'Every state was sent once', eff.resent_state_calls > 0),
+      fig('Accuracy', qual.accuracy == null ? '—' : pct(qual.accuracy), null,
+        qual.reviewed ? `${int(qual.correct)} right of ${int(qual.reviewed)} reviewed` : 'Nothing reviewed yet'),
+      fig('Low certainty', int(qual.uncertain), null, `Calls less than ${qual.below} sure`, qual.uncertain > 0),
+    );
+  }
+
+  /* ── the chart ──────────────────────────────────────────────────── */
+  const niceMax = (v) => {
+    if (v <= 0) return 100;
+    const mag = 10 ** Math.floor(Math.log10(v));
+    for (const s of [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) if (s * mag >= v) return s * mag;
+    return 10 * mag;
+  };
+
+  let chartPoints = [], chartFocus = -1;
+
+  function renderChart() {
+    const box = $('chart');
+    const ov = state.overview;
+    if (!ov) return; // nothing loaded yet: an empty message now would only flash
+    const points = (ov?.calls || []).filter((c) => !c.cached).sort((a, b) => a.ts - b.ts);
+    box.replaceChildren();
+    chartPoints = [];
+    if (!points.length) {
+      box.append(h('p', { class: 'empty-chart' }, 'No live calls in this period. They appear here as soon as a client uses jev_ask.'));
+      return;
+    }
+    const W = Math.max(280, box.clientWidth), H = 200, L = 52, R = 76, T = 10, B = 26;
+    const now = Date.now(), from = now - state.days * 86400000;
+    const firstTs = Math.min(...points.map((p) => p.ts));
+    const x0 = state.days >= 3650 ? firstTs : from;
+    const perf = ov.stats.performance.live_latency_ms;
+    const cap = niceMax(Math.max(perf.p95 ? perf.p95 * 1.6 : 0, (perf.p50 || 0) * 2.5, 1));
+    const yMax = Math.min(niceMax(Math.max(...points.map((p) => p.latency_ms))), cap);
+    const X = (ts) => L + ((ts - x0) / Math.max(1, now - x0)) * (W - L - R);
+    const Y = (v) => T + (1 - Math.min(v, yMax) / yMax) * (H - T - B);
+
+    const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, height: H, role: 'img', tabindex: '0',
+      'aria-label': `Latency of ${points.length} live calls. Typical ${ms(perf.p50)}, 95th percentile ${ms(perf.p95)}. Use the arrow keys to step through calls.` });
+
+    const grid = svg('g', { class: 'grid axis' });
+    for (const f of [0, 0.5, 1]) {
+      const v = yMax * f, y = Y(v);
+      if (f > 0) grid.append(svg('line', { x1: L, x2: W - R, y1: y, y2: y }));
+      const t = svg('text', { x: L - 8, y: y + 4, 'text-anchor': 'end' });
+      t.textContent = f === 0 ? '0' : ms(v);
+      grid.append(t);
+    }
+    const span = now - x0;
+    for (const f of [0, 0.5, 1]) {
+      const ts = x0 + span * f;
+      const t = svg('text', { x: X(ts), y: H - 6, 'text-anchor': f === 0 ? 'start' : f === 1 ? 'end' : 'middle' });
+      t.textContent = f === 1 ? 'now' : span <= 2 * 86400000 ? new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric' });
+      grid.append(t);
+    }
+    root.append(grid, svg('line', { class: 'base', x1: L, x2: W - R, y1: Y(0), y2: Y(0) }));
+
+    // p50 and p95, labelled at the right edge. When they sit close together the
+    // two labels would collide, so only the upper one keeps its text.
+    const refs = svg('g', { class: 'ref' });
+    const lines = [['p95', perf.p95], ['p50', perf.p50]].filter(([, v]) => v != null && v <= yMax);
+    lines.forEach(([name, v], i) => {
+      const y = Y(v);
+      refs.append(svg('line', { x1: L, x2: W - R, y1: y, y2: y }));
+      const tooClose = i === 1 && lines.length === 2 && Math.abs(Y(lines[0][1]) - y) < 14;
+      if (!tooClose) {
+        const t = svg('text', { x: W - R + 6, y: y + 4 });
+        t.textContent = `${name} ${ms(v)}`;
+        refs.append(t);
+      }
+    });
+    root.append(refs);
+
+    const dots = svg('g', {});
+    for (const p of points) {
+      const cx = X(p.ts), cy = Y(p.latency_ms), clipped = p.latency_ms > yMax;
+      const failed = p.status !== 200;
+      const mark = failed
+        ? svg('rect', { x: cx - 4, y: cy - 4, width: 8, height: 8, transform: `rotate(45 ${cx} ${cy})`, class: 'pt err' })
+        : svg('circle', { cx, cy, r: 4, class: 'pt ok' });
+      if (clipped) mark.setAttribute('opacity', '0.9');
+      if (p.id === state.selected) mark.classList.add('sel');
+      const hit = svg('circle', { cx, cy, r: 12, class: 'hit' });
+      const entry = { p, cx, cy, mark, clipped };
+      hit.addEventListener('pointerenter', () => showTip(entry));
+      hit.addEventListener('pointerleave', hideTip);
+      hit.addEventListener('click', () => select(p.id, true));
+      dots.append(mark, hit);
+      chartPoints.push(entry);
+    }
+    root.append(dots);
+
+    root.addEventListener('keydown', (e) => {
+      if (!chartPoints.length) return;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        chartFocus = Math.max(0, Math.min(chartPoints.length - 1, chartFocus + (e.key === 'ArrowRight' ? 1 : -1)));
+        showTip(chartPoints[chartFocus]);
+      } else if (e.key === 'Enter' && chartFocus >= 0) {
+        select(chartPoints[chartFocus].p.id, true);
+      }
+    });
+    root.addEventListener('blur', hideTip);
+    box.append(root);
+  }
+
+  let tip = null;
+  function showTip({ p, cx, cy, clipped }) {
+    hideTip();
+    tip = h('div', { class: 'tip', role: 'status' },
+      h('strong', null, ms(p.latency_ms), clipped ? ' (above the chart)' : ''),
+      h('div', { class: 'muted' }, fullWhen(p.ts)),
+      p.status !== 200 ? h('div', null, p.status ? `Failed with HTTP ${p.status}` : 'Never reached the API') : h('div', null, `${int(p.input_tokens)} tokens, ${usd(p.cost_usd)}`),
+      p.preview ? h('div', { class: 'muted' }, p.preview.length > 90 ? `${p.preview.slice(0, 89)}…` : p.preview) : null);
+    const box = $('chart');
+    box.append(tip);
+    const left = Math.min(Math.max(0, cx + 14), box.clientWidth - tip.offsetWidth);
+    const top = cy + 14 + tip.offsetHeight > 200 ? Math.max(0, cy - tip.offsetHeight - 10) : cy + 14;
+    tip.style.left = `${left}px`;
+    tip.style.top = `${top}px`;
+  }
+  function hideTip() { tip?.remove(); tip = null; }
+
+  /* ── the list ───────────────────────────────────────────────────── */
+  const FILTERS = [
+    ['all', 'All', (s) => s.calls],
+    ['live', 'Live', (s) => s.live_calls],
+    ['cached', 'Cached', (s) => s.cache_hits],
+    ['errors', 'Failed', (s) => s.errors],
+    ['uncertain', 'Least certain', (s) => s.quality.uncertain],
+    ['slow', 'Slowest', null],
+    ['unreviewed', 'Not reviewed', null],
+    ['reviewed', 'Reviewed', (s) => s.quality.reviewed],
+    ['incorrect', 'Wrong', (s) => s.quality.incorrect],
+  ];
+
+  function renderChips(stats) {
+    fill($('chips'), FILTERS.map(([key, label, n]) => h('button', {
+      class: 'chip', type: 'button', 'aria-pressed': String(state.filter === key),
+      onclick: () => { state.filter = key; loadList(); renderChips(stats); },
+    }, label, n && stats ? h('span', { class: 'n' }, int(n(stats))) : null)));
+  }
+
+  const tagFor = (c) => {
+    const tag = c.cached ? h('span', { class: 'tag' }, 'cached')
+      : c.status !== 200 ? h('span', { class: 'tag warn' }, c.status ? `HTTP ${c.status}` : 'no reply') : null;
+    return tag ? [h('br'), tag] : null;
+  };
+
+  function renderList(report) {
+    state.rows = report.calls;
+    const shown = report.calls.length, total = report.total;
+    $('count').textContent = total > shown ? `Showing ${shown} of ${total} calls` : `${total} ${total === 1 ? 'call' : 'calls'}`;
+    const list = $('list');
+    if (!shown) {
+      const noneAtAll = state.overview && state.overview.stats.calls === 0;
+      fill(list, h('div', { class: 'list-empty' },
+        h('strong', null, noneAtAll ? 'No calls recorded in this period' : 'No calls match'),
+        noneAtAll ? 'Calls appear here once a client uses jev_ask. If you expected some, check that TYPESAFE_HISTORY is not "off" for the MCP server.'
+          : 'Try another filter, a longer period, or a shorter search.'));
+      return;
+    }
+    const rows = report.calls.map((c) => {
+      const low = c.certainty != null && c.certainty < BELOW;
+      const asked = h('td', { class: 'asked', title: c.answers || '' },
+        h('div', { class: 'when-inline' }, when(c.ts, true)),
+        c.preview ? h('div', { class: 'preview' }, c.preview) : h('div', { class: 'preview hidden' }, 'State not kept'),
+        c.error ? h('div', { class: 'fail' }, c.error.split('\n')[0]) : h('div', { class: 'digest' }, c.answers || ''));
+      return h('tr', {
+        tabindex: '0', 'aria-selected': String(c.id === state.selected), 'data-id': c.id,
+        onclick: () => select(c.id), onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(c.id); } },
+      },
+      h('td', { class: 'when col-when' }, when(c.ts)),
+      asked,
+      h('td', { class: `num col-sure${low ? ' low' : ''}` }, c.certainty == null ? h('span', { class: 'none' }, '—')
+        : h('span', { class: 'sure' }, p2(c.certainty), h('span', { class: 'meter', 'aria-hidden': 'true' }, h('i', { style: { width: `${Math.round(c.certainty * 100)}%` } })))),
+      h('td', { class: 'num' }, ms(c.latency_ms), tagFor(c)),
+      h('td', { class: 'num col-cost' }, usd(c.cost_usd)),
+      h('td', null, verdictCell(c.verdict)));
+    });
+    fill(list, h('table', null,
+      h('colgroup', null, h('col', { class: 'c-when col-when' }), h('col'), h('col', { class: 'c-sure col-sure' }),
+        h('col', { class: 'c-time' }), h('col', { class: 'c-cost col-cost' }), h('col', { class: 'c-review' })),
+      h('thead', null, h('tr', null,
+        h('th', { scope: 'col', class: 'col-when' }, 'When'), h('th', { scope: 'col' }, 'What was asked'),
+        h('th', { scope: 'col', class: 'num col-sure' }, 'Certainty'), h('th', { scope: 'col', class: 'num' }, 'Time'),
+        h('th', { scope: 'col', class: 'num col-cost' }, 'Cost'), h('th', { scope: 'col' }, 'Review'))),
+      h('tbody', null, rows)));
+  }
+
+  /* ── one call ───────────────────────────────────────────────────── */
+  async function select(id, scroll) {
+    state.selected = id;
+    for (const tr of document.querySelectorAll('tbody tr')) tr.setAttribute('aria-selected', String(tr.dataset.id === id));
+    for (const e of chartPoints) e.mark.classList.toggle('sel', e.p.id === id);
+    try {
+      const call = await api(`/api/calls/${encodeURIComponent(id)}`);
+      if (state.selected !== id) return; // another call was chosen meanwhile
+      state.call = call;
+      state.draft = { verdict: call.verdict, note: call.note || '', expected: { ...(call.expected || {}) }, dirty: false };
+      renderDetail();
+      if (scroll || matchMedia('(max-width: 900px)').matches) $('detail').scrollIntoView({ block: 'start', behavior: 'smooth' });
+    } catch (err) {
+      fill($('detail'), h('p', { class: 'error-box' }, err.message));
+    }
+  }
+
+  function renderState(call) {
+    if (call.state === null) {
+      return h('p', { class: 'note-line' }, 'Not kept. This call was recorded with TYPESAFE_HISTORY=meta, which keeps timings and answers but not what was asked.');
+    }
+    const text = typeof call.state === 'string' ? call.state : JSON.stringify(call.state, null, 2);
+    const pre = h('pre', { class: 'state' }, text);
+    const long = text.split('\n').length > 14 || text.length > 1400;
+    return h('div', null, pre, long ? h('button', { class: 'btn quiet', type: 'button', onclick: (e) => {
+      pre.classList.toggle('open');
+      e.target.textContent = pre.classList.contains('open') ? 'Show less' : 'Show all of it';
+    } }, 'Show all of it') : null);
+  }
+
+  const instructionsText = (ins) => typeof ins === 'string' ? ins : JSON.stringify(ins, null, 2);
+
+  /** What Jev settled on for one answer, in the same terms an expected answer is recorded in. */
+  const pickOf = (a) => a?.type === 'noul' ? a.noul >= 0.5 : a?.type === 'choice' ? a.choice : a?.type === 'score' ? Math.round(a.score) : undefined;
+
+  /**
+   * Marking what an answer should have been suggests a verdict, without
+   * overriding one already chosen: any mark that disagrees with Jev suggests
+   * Wrong; marks that all agree suggest Correct.
+   */
+  function suggestVerdict() {
+    const d = state.draft, answers = state.call.answers || {};
+    const marks = Object.entries(d.expected);
+    if (!marks.length) return;
+    const disagree = marks.some(([q, v]) => JSON.stringify(pickOf(answers[q])) !== JSON.stringify(v));
+    if (disagree && (!d.verdict || d.verdict === 'correct')) d.verdict = 'incorrect';
+    if (!disagree && !d.verdict) d.verdict = 'correct';
+  }
+
+  /** Each answer as bars, with the option Jev picked in blue — click the option that should have won. */
+  function renderAnswer(qid, answer, question) {
+    const d = state.draft;
+    const expected = d.expected[qid];
+    const setExpected = (value) => {
+      if (JSON.stringify(d.expected[qid]) === JSON.stringify(value)) delete d.expected[qid]; else d.expected[qid] = value;
+      d.dirty = true;
+      suggestVerdict();
+      renderDetail();
+    };
+    const opt = ({ label, sub, p, picked, value }) => {
+      const isExpected = expected !== undefined && JSON.stringify(expected) === JSON.stringify(value);
+      return h('button', {
+        type: 'button', class: `opt${picked ? ' picked' : ''}${isExpected ? ' expected' : ''}`, 'aria-pressed': String(isExpected),
+        title: isExpected ? 'Marked as what the answer should have been. Click again to unmark.' : 'Mark this as what the answer should have been',
+        onclick: () => setExpected(value),
+      },
+      h('span', { class: 'name' }, label, isExpected ? h('span', { class: 'mark' }, 'should be') : null, sub ? h('small', null, sub) : null),
+      h('span', { class: 'track', 'aria-hidden': 'true' }, h('i', { style: { width: `${Math.max(0, Math.min(1, p ?? 0)) * 100}%` } })),
+      h('span', { class: 'p' }, p2(p)));
+    };
+
+    let conf = null, opts = [], extra = null;
+    if (answer?.type === 'noul') {
+      const p = answer.noul;
+      conf = Math.abs(2 * p - 1);
+      opts = [
+        opt({ label: 'yes', sub: question?.criteria?.true, p, picked: p >= 0.5, value: true }),
+        opt({ label: 'no', sub: question?.criteria?.false, p: 1 - p, picked: p < 0.5, value: false }),
+      ];
+    } else if (answer?.type === 'choice') {
+      conf = answer.confidence;
+      const probs = answer.probabilities || { [answer.choice]: 1 };
+      opts = Object.entries(probs).sort((a, b) => b[1] - a[1]).map(([name, p]) =>
+        opt({ label: name, sub: question?.criteria?.[name] || null, p, picked: name === answer.choice, value: name }));
+    } else if (answer?.type === 'score') {
+      conf = answer.confidence;
+      const legend = answer.legend || {};
+      const levels = Object.keys(answer.probabilities || legend).map(Number).sort((a, b) => a - b);
+      const nearest = Math.round(answer.score);
+      opts = levels.map((lvl) => opt({ label: `${lvl}`, sub: legend[lvl] ?? question?.criteria?.[lvl] ?? null,
+        p: answer.probabilities?.[lvl], picked: lvl === nearest, value: lvl }));
+      extra = h('p', { class: 'score-line' }, `Score ${answer.score} on a scale of ${levels[0]} to ${levels[levels.length - 1]}`);
+    } else {
+      extra = h('pre', { class: 'state' }, JSON.stringify(answer, null, 2));
+    }
+    const low = conf != null && conf < BELOW;
+    return h('div', { class: 'q' },
+      h('div', { class: 'q-head' }, h('code', null, qid), h('span', { class: 'type' }, answer?.type || ''),
+        conf != null ? h('span', { class: `conf${low ? ' low' : ''}` }, `${low ? 'Unsure, ' : ''}certainty ${p2(conf)}`) : null),
+      question ? h('p', { class: 'instr' }, instructionsText(question.instructions)) : null,
+      h('div', { class: 'opts' }, opts),
+      extra);
+  }
+
+  function renderDetail() {
+    const call = state.call, d = state.draft;
+    if (!call) return;
+    const source = call.cached ? 'Cache' : call.forced ? 'Live, forced refresh' : 'Live';
+    const facts = [
+      ['Model', call.resolved_model || call.requested_model || '—'],
+      ['Source', source],
+      ['Time', ms(call.latency_ms)],
+      ['Tries', call.attempts ?? (call.cached ? '—' : '1')],
+      ['Input tokens', call.cached ? 'none' : int(call.input_tokens)],
+      ['Cost', usd(call.cost_usd)],
+      ['Questions', int(call.question_count)],
+      ['Client', call.client || '—'],
+    ];
+    const answers = call.answers || {};
+    const qids = Object.keys(answers);
+    const verdictButtons = Object.entries(VERDICT).map(([v, { icon, word }]) => h('button', {
+      type: 'button', 'data-v': v, 'aria-pressed': String(d.verdict === v),
+      onclick: () => { d.verdict = d.verdict === v ? null : v; d.dirty = true; renderDetail(); },
+    }, h('span', { class: 'icon', 'aria-hidden': 'true' }, icon), word));
+    const expectedIds = Object.keys(d.expected);
+
+    fill($('detail'),
+      h('header', null, h('h2', null, 'Call ', h('code', null, call.id)), h('time', { datetime: new Date(call.ts).toISOString() }, fullWhen(call.ts))),
+      h('dl', { class: 'facts' }, facts.map(([k, v]) => h('div', null, h('dt', null, k), h('dd', null, String(v))))),
+      call.status !== 200 ? h('div', null, h('h3', null, call.status ? `Failed with HTTP ${call.status}` : 'Never reached the API'), h('div', { class: 'error-box' }, call.error || 'No detail was recorded.')) : null,
+      h('h3', null, 'State'),
+      renderState(call),
+      qids.length ? h('h3', null, 'Answers') : null,
+      qids.map((qid) => renderAnswer(qid, answers[qid], call.questions?.[qid])),
+      call.status === 200 ? h('div', { class: 'review' },
+        h('h3', null, 'Was it right?'),
+        h('div', { class: 'verdicts', role: 'group', 'aria-label': 'Verdict' }, verdictButtons),
+        h('p', { class: 'expected-list' }, expectedIds.length
+          ? ['Should have been: ', ...expectedIds.flatMap((q, i) => [i ? ', ' : '', h('code', null, q), ` = ${JSON.stringify(d.expected[q])}`])]
+          : 'To record the right answer, click the option that should have won.'),
+        h('label', { class: 'sr-only', for: 'note' }, 'Note'),
+        h('textarea', { id: 'note', placeholder: 'What was right or wrong about it? (optional)', oninput: (e) => { d.note = e.target.value; d.dirty = true; } }, d.note),
+        h('div', { class: 'actions' },
+          h('button', { class: 'btn primary', type: 'button', onclick: saveReview }, 'Save review'),
+          call.verdict ? h('button', { class: 'btn quiet', type: 'button', onclick: clearReview }, 'Clear review') : null,
+          h('span', { class: 'status', id: 'save-status', 'aria-live': 'polite' },
+            call.reviewed_at ? `Reviewed ${fullWhen(call.reviewed_at)}` : d.dirty ? 'Unsaved' : '')),
+        h('p', { class: 'keys' }, 'Keys: ', h('kbd', null, 'j'), ' ', h('kbd', null, 'k'), ' next and previous call, ',
+          h('kbd', null, 'c'), ' ', h('kbd', null, 'p'), ' ', h('kbd', null, 'w'), ' correct, partly right, wrong, ', h('kbd', null, 's'), ' save.'),
+      ) : null,
+    );
+  }
+
+  async function postReview(body, done) {
+    const status = $('save-status');
+    try {
+      const call = await api(`/api/calls/${encodeURIComponent(state.call.id)}/review`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      });
+      state.call = { ...state.call, ...call };
+      state.draft = { verdict: call.verdict, note: call.note || '', expected: { ...(call.expected || {}) }, dirty: false };
+      renderDetail();
+      $('save-status').textContent = done;
+      $('announce').textContent = done;
+      loadAll();
+    } catch (err) {
+      if (status) { status.textContent = err.message; status.classList.add('err'); }
+    }
+  }
+  function saveReview() {
+    const d = state.draft;
+    if (!d.verdict) {
+      const status = $('save-status');
+      status.textContent = 'Choose Correct, Partly right or Wrong first.';
+      status.classList.add('err');
+      return;
+    }
+    postReview({ verdict: d.verdict, note: d.note.trim() || null, expected: Object.keys(d.expected).length ? d.expected : null }, 'Review saved');
+  }
+  const clearReview = () => postReview({ verdict: null }, 'Review cleared');
+
+  /* ── loading ────────────────────────────────────────────────────── */
+  async function loadList() {
+    const q = new URLSearchParams({ days: state.days, filter: state.filter, below: BELOW, limit: 300 });
+    if (state.q) q.set('q', state.q);
+    $('list').classList.add('stale');
+    try {
+      renderList(await api(`/api/report?${q}`));
+    } catch (err) {
+      showError(err);
+    } finally {
+      $('list').classList.remove('stale');
+    }
+  }
+
+  async function loadAll() {
+    try {
+      const overview = await api(`/api/report?${new URLSearchParams({ days: state.days, filter: 'all', below: BELOW, limit: 5000 })}`);
+      state.overview = overview;
+      $('banner').hidden = true;
+      renderFigures(overview.stats);
+      renderChips(overview.stats);
+      renderChart();
+      $('stamp').textContent = `Updated ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+      await loadList();
+    } catch (err) {
+      showError(err);
+    }
+  }
+
+  function showError(err) {
+    const b = $('banner');
+    b.textContent = err.message;
+    b.hidden = false;
+  }
+
+  /* ── wiring ─────────────────────────────────────────────────────── */
+  $('days').addEventListener('change', (e) => {
+    state.days = Number(e.target.value);
+    try { localStorage.setItem('jev-ui', JSON.stringify({ days: state.days })); } catch { /* not remembered */ }
+    loadAll();
+  });
+  $('refresh').addEventListener('click', () => loadAll());
+  let typing;
+  $('q').addEventListener('input', (e) => {
+    clearTimeout(typing);
+    typing = setTimeout(() => { state.q = e.target.value.trim(); loadList(); }, 200);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    const t = e.target;
+    if (e.metaKey || e.ctrlKey || e.altKey || t.matches('input, textarea, select')) return;
+    const rows = state.rows;
+    const at = rows.findIndex((r) => r.id === state.selected);
+    if (e.key === 'j' || e.key === 'k') {
+      const next = rows[Math.max(0, Math.min(rows.length - 1, at + (e.key === 'j' ? 1 : -1)))];
+      if (next) {
+        select(next.id);
+        document.querySelector(`tbody tr[data-id="${CSS.escape(next.id)}"]`)?.scrollIntoView({ block: 'nearest' });
+      }
+    } else if (state.call && state.draft && state.call.status === 200 && { c: 1, p: 1, w: 1 }[e.key]) {
+      state.draft.verdict = { c: 'correct', p: 'partial', w: 'incorrect' }[e.key];
+      state.draft.dirty = true;
+      renderDetail();
+    } else if (e.key === 's' && state.draft?.dirty) {
+      saveReview();
+    }
+  });
+
+  let resizeTimer;
+  new ResizeObserver(() => { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderChart, 80); }).observe($('chart'));
+
+  // New calls land while Claude works; pick them up without disturbing a review in progress.
+  setInterval(() => { if (!document.hidden) loadAll(); }, 20000);
+
+  if (!token) showError(new Error('No access token. Open the address `jev-bridge --ui` printed.'));
+  else loadAll();
+})();
+</script>
+</body>
+</html>

@@ -31,10 +31,40 @@ This is the part most worth scrutinising, so here is exactly what the code does:
 
 ## What the database contains
 
-`~/.jev-bridge/jev.db` stores **answers** — keyed by a SHA-256 hash of the
-request — plus token counts, costs, latencies and HTTP status codes. It does
-**not** store the `state` you sent or the text of your questions. A hash cannot
-be reversed into the content that produced it.
+`~/.jev-bridge/jev.db` holds three things, and nothing in it leaves your machine:
+
+- **The answer cache** — answers keyed by SHA-256 hashes of the request. It
+  holds no `state` and no question text. Answers do repeat your `choice` option
+  names and `score` level labels, which Jev returns as part of each answer.
+- **The usage log** — token counts, costs, latencies and HTTP status codes.
+- **The call history**, controlled by `TYPESAFE_HISTORY`:
+  - `full` (the default) keeps the `state` and questions of every call, so a
+    reviewer can judge whether the answer was right;
+  - `meta` keeps answers, timings, costs and hashes, but **not** the state or
+    the question text — a test checks the database file's bytes to hold it to
+    that;
+  - `off` keeps nothing.
+
+  Calls are pruned after 30 days (`TYPESAFE_HISTORY_DAYS`), except those you
+  have reviewed. `jev-bridge --clear-history` deletes all of it. Changing the
+  mode does not rewrite calls already recorded.
+
+## The history dashboard
+
+`jev-bridge --ui` starts a web server so you can review calls in a browser. It
+shows whatever the history kept, so it is locked down like a local notebook
+server:
+
+- It listens on **127.0.0.1 only**, and rejects any request whose `Host`
+  header names anything other than `127.0.0.1`, `localhost` or `[::1]` on its
+  port — which stops a web page from reaching it through DNS rebinding.
+- Every request needs a **random token**, generated per run and printed with
+  the address. The API takes it only in a header, and compares it in constant
+  time.
+- The page loads **nothing from the network**, renders every stored value as
+  text rather than markup, and its Content-Security-Policy allows only its own
+  script and style. It sends no referrer and cannot be framed.
+- It runs in its own process: the MCP server never opens a port.
 
 ## Out of scope
 

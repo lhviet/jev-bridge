@@ -292,6 +292,29 @@ describe('concurrency', { skip: noSqlite }, () => {
     assert.equal(u.cache.entries, 800);
     assert.equal(u.calls, 800);
   });
+
+  test('several sessions opening a brand-new database at the same moment all succeed', async () => {
+    // Switching a fresh file to WAL makes every opener upgrade a shared lock at
+    // once. SQLite answers that with SQLITE_BUSY instead of calling the busy
+    // handler, so busy_timeout alone lost roughly one opener in fifteen.
+    const opener = join(tmp, 'opener.mjs');
+    writeFileSync(opener, `
+      import * as sqlite from 'node:sqlite';
+      import { openStore } from ${JSON.stringify(join(SRC, 'store.mjs'))};
+      openStore(process.argv[2], { sqlite }).close();
+    `);
+    const open = (db) => new Promise((resolve) => {
+      const child = spawn(process.execPath, [opener, db]);
+      let err = '';
+      child.stderr.on('data', (d) => (err += d));
+      child.on('close', (code) => resolve({ code, err }));
+    });
+    for (let round = 0; round < 20; round++) {
+      const db = tmpDb();
+      const results = await Promise.all(Array.from({ length: 6 }, () => open(db)));
+      for (const r of results) assert.equal(r.code, 0, `an opener failed: ${r.err}`);
+    }
+  });
 });
 
 /* ── end to end over MCP: a real server process, only the API is faked ───── */

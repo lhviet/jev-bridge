@@ -1,7 +1,7 @@
 {
   "name": "jev-bridge",
   "version": "0.1.0",
-  "description": "A zero-dependency MCP server for TypeSafe's Jev: calibrated, typed judgments for Claude Code and any MCP client, with a local answer cache and usage accounting.",
+  "description": "A zero-dependency MCP server for TypeSafe's Jev: calibrated, typed judgments for Claude Code and any MCP client, with a local answer cache, usage accounting and a reviewable call history.",
   "private": true,
   "type": "module",
   "bin": {
@@ -20,7 +20,9 @@
   "scripts": {
     "test": "node --test",
     "selftest": "node src/server.mjs --selftest",
-    "stats": "node src/server.mjs --stats"
+    "stats": "node src/server.mjs --stats",
+    "ui": "node src/server.mjs --ui",
+    "history": "node src/server.mjs --history"
   },
   "engines": {
     "node": ">=18"

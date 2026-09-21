@@ -42,6 +42,7 @@ ask:    Which team should handle this?
 - [Tools](#tools)
 - [Caching](#caching)
 - [Cost and usage](#cost-and-usage)
+- [Call history](#call-history)
 - [Configuration](#configuration)
 - [Where your data lives](#where-your-data-lives)
 - [Troubleshooting](#troubleshooting)
@@ -78,12 +79,15 @@ agent to design questions, and jev-bridge lets it ask them.
 
 **Features**
 
-- **Three tools** — `jev_ask`, `jev_usage`, `jev_models`.
+- **Five tools** — `jev_ask`, `jev_usage`, `jev_history`, `jev_review`, `jev_models`.
 - **Typed output** — `jev_ask` declares an MCP `outputSchema` and returns
   `structuredContent`.
 - **An answer cache** — a repeated question returns in about 0.08 ms instead of
   about 180 ms, and costs nothing.
 - **Cost accounting** — tokens, cost, latency and outcome for every call.
+- **A call history you can review** — what was asked, what came back, how long
+  it took and whether it was right, in a local dashboard (`--ui`). Written after
+  each answer has gone back, so it costs the answer nothing.
 - **Zero dependencies** — Node built-ins only, SQLite included.
 - **Degrades instead of failing** — on a Node without SQLite it caches in memory.
 
@@ -91,6 +95,8 @@ agent to design questions, and jev-bridge lets it ask them.
 
 jev-bridge is a **child process, not a service**. Your MCP client starts it and
 talks to it over stdin and stdout; it opens no port and exits with the session.
+(The history dashboard is a separate command you start yourself, and it listens
+only on 127.0.0.1.)
 The only thing that leaves your machine is a cache miss.
 
 ```mermaid
@@ -100,7 +106,7 @@ flowchart TB
     CC("Claude Code<br/>or any MCP client")
     SRV["jev-bridge<br/>child process, stdio only"]
     KEY[("API key<br/>~/.jev-bridge/.env · 0600")]
-    DB[("jev.db<br/>answers and usage")]
+    DB[("jev.db<br/>answers, usage, history")]
     CC <== "JSON-RPC over<br/>stdin and stdout" ==> SRV
     KEY -. "read per call" .-> SRV
     SRV <== "cache hit, about 0.08 ms" ==> DB
@@ -198,7 +204,7 @@ thing is; **colour** says whose it is.
 | --- | --- | --- |
 | 🟦 blue | rectangle | jev-bridge — code that runs on your machine |
 | 🟪 violet | rounded box | an MCP client, or Claude |
-| 🟩 green | cylinder | stored data — the answer cache and usage log |
+| 🟩 green | cylinder | stored data — the answer cache, usage log and call history |
 | 🟥 red | cylinder | your API key |
 | 🟧 orange | pill · hexagon | TypeSafe's API · Jev making a judgment |
 | 🟨 yellow | parallelogram | input you supply |
@@ -539,13 +545,38 @@ Evaluate a `state` against typed questions.
 | `cache` | no | `false` forces a live call and refreshes the stored answer. |
 
 Returns `model`, `answers`, `usage`, and a `bridge` object: `cached`,
-`latency_ms`, and `cost_usd` — what **this** call cost, which is `0` on a hit.
-On a cache hit, `usage` describes the original call.
+`latency_ms`, `cost_usd` — what **this** call cost, which is `0` on a hit — and
+`call_id`, which names the call in the history. On a cache hit, `usage`
+describes the original call.
 
 ### `jev_usage`
 
 Calls, cache hits, hit rate, tokens, cost, money saved by the cache, and a
 per-day breakdown. Input: `days` (default 7).
+
+### `jev_history`
+
+Looks back at earlier calls. With no `id`, it returns stats for the period and
+the matching calls, each with the start of its state and its answers on one
+line. With `id`, it returns that call in full: state, questions, answers,
+timing, cost and review. Read-only.
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `id` | — | A `bridge.call_id`. Returns that one call in full. |
+| `days` | `7` | How far back to look. |
+| `filter` | `all` | `all`, `live`, `cached`, `errors`, `uncertain`, `slow`, `unreviewed`, `reviewed`, `correct`, `partial`, `incorrect`. |
+| `below` | `0.6` | The certainty cut for `uncertain`. |
+| `q` | — | Only calls whose state or answers contain this text. |
+| `limit` | `20` | Most calls to list. |
+
+### `jev_review`
+
+Records whether a past call was right: `verdict` is `correct`, `partial` or
+`incorrect` (or `null` to withdraw a review). Optional `expected` records what
+the answers should have been, by question id, and `note` says why. Claude can
+call it itself when you correct an answer, or you can review in the
+[dashboard](#call-history).
 
 ### `jev_models`
 
@@ -611,6 +642,74 @@ node src/server.mjs --stats 7
 }
 ```
 
+## Call history
+
+Every `jev_ask` — answered live, from the cache, rejected, or timed out — is
+kept for review, so you can come back later and ask two questions of it:
+**was it efficient**, and **was it right**.
+
+```bash
+node src/server.mjs --ui
+```
+
+That opens a dashboard in your browser. It shows:
+
+- **Speed and cost:** typical and 95th-percentile latency of live calls, the
+  cache hit rate, what was spent, and a dot per live call over time. Failed
+  calls and calls that were retried after a rate limit stand out.
+- **Batching:** *re-sent states* counts live calls that sent a state already
+  sent earlier. Their questions could have gone in the earlier call, which
+  would have been cheaper and faster.
+- **Certainty:** each call is scored by its **least** sure answer — a `choice`
+  or `score` by Jev's own confidence, a `noul` by its distance from 0.5 (so
+  0.5 is 0, and 0.95 is 0.9). The *Least certain* filter lists the calls most
+  worth a second look first.
+- **Accuracy:** open a call to see the state, every question, and each answer
+  as bars. Mark it *Correct*, *Partly right* or *Wrong*, click the option that
+  should have won, and add a note. Accuracy is the share of reviewed calls
+  marked correct.
+
+The same history is available to Claude through `jev_history` and
+`jev_review`, and on the command line:
+
+```bash
+node src/server.mjs --history 7 uncertain   # stats and calls as JSON
+node src/server.mjs --clear-history         # forget it all; the cache and usage log stay
+```
+
+**What is kept.** `TYPESAFE_HISTORY` decides:
+
+| Mode | Keeps | Use it when |
+| --- | --- | --- |
+| `full` (default) | the state and questions, the answers, timing, tokens, cost | you want to judge whether answers were right |
+| `meta` | answers, timing, tokens, cost, and hashes of the state and questions — **not** the state or question text | the state is sensitive, and speed and cost are what you need |
+| `off` | nothing | you want no history |
+
+Each state is stored once however often it is sent. Calls older than 30 days
+are pruned, and no more than 10,000 are kept — except **reviewed calls, which
+are never pruned**: they have become labelled examples.
+
+**It does not slow calls down.** Nothing is written while a call is being
+answered: records queue in memory and are written in one transaction once the
+bridge has been idle for 20 ms (at most 500 ms later, or after 100 calls).
+Measured end to end over MCP, against the version without history, with an
+instant fake API so that only the bridge's own time shows:
+
+| | Before | With `full` history |
+| --- | --- | --- |
+| Cache hit, median | 114–119 µs | 108–116 µs |
+| Cache hit, 95th percentile | 0.17–0.25 ms | 0.21–0.31 ms |
+| Live call, median | 450–533 µs | 437–484 µs |
+| Live call, 95th percentile | 0.8–2.0 ms | 0.9–1.1 ms |
+
+Medians are unchanged — slightly faster, since the usage log moved off the
+answer's path too — and the 95th percentiles move by a tenth of a millisecond
+at most. The one cost shows only in an unbroken burst of thousands of
+back-to-back calls: the call that lands on a 100-call write waits for it, which
+adds 2–4 ms at the 99th percentile. Against the real API the write happens
+while the next call is waiting for the network, and between Claude's turns
+nobody is waiting at all.
+
 ## Configuration
 
 Everything is optional.
@@ -624,6 +723,9 @@ Everything is optional.
 | `TYPESAFE_MODEL` | `jev-latest` | Default model. Pin a version such as `jev-1.13.0` if you tune thresholds against it. |
 | `TYPESAFE_CACHE_TTL_DAYS` | `7` | How long an answer stays fresh. |
 | `TYPESAFE_CACHE_MAX` | `20000` | Cache entries kept before eviction. |
+| `TYPESAFE_HISTORY` | `full` | `full`, `meta` or `off`: how much of each call to keep for review. See [Call history](#call-history). |
+| `TYPESAFE_HISTORY_DAYS` | `30` | How long an unreviewed call is kept. |
+| `TYPESAFE_HISTORY_MAX` | `10000` | Unreviewed calls kept before the oldest go. |
 | `TYPESAFE_USD_PER_MTOK` | `0.042` | Price used to compute cost. |
 | `TYPESAFE_TIMEOUT_MS` | `60000` | Per-request timeout. |
 | `TYPESAFE_API_URL` | `https://api.typesafe.ai/v1` | API base URL. |
@@ -638,12 +740,16 @@ root.
 | --- | --- |
 | `~/.jev-bridge/` | Created with mode `0700`. |
 | `~/.jev-bridge/.env` | Your API key, if you used Option A. |
-| `~/.jev-bridge/jev.db` | Cached answers and the usage log. |
+| `~/.jev-bridge/jev.db` | Cached answers, the usage log and the call history. |
 
-The database stores **answers**, keyed by a hash of the request, plus token
-counts, costs and timings. It **does not store your `state` or your
-questions** — the hash cannot be reversed into them. Your key is sent only to
-the TypeSafe API and is never logged. See [SECURITY.md](SECURITY.md).
+The **cache** stores answers, keyed by hashes of the request, and the **usage
+log** stores token counts, costs and timings. Neither holds your `state` or
+your question text. The **call history** does, when `TYPESAFE_HISTORY` is
+`full` — the default — because judging whether an answer was right needs what
+was asked. Set it to `meta` to keep only answers, timings and hashes, or `off`
+to keep nothing. Answers repeat your option names and score level labels, in
+every mode. Nothing in the database leaves your machine. Your key is sent only
+to the TypeSafe API and is never logged. See [SECURITY.md](SECURITY.md).
 
 ## Troubleshooting
 
@@ -666,6 +772,12 @@ Node, or register the server with the absolute path of a newer one.
 **`429` or `529` errors.** jev-bridge already retries these with backoff. If
 they persist, you are over your rate limit or TypeSafe is under load.
 
+**The dashboard is empty.** It reads the same database as the MCP server, so
+check both see the same `TYPESAFE_DB` and `JEV_BRIDGE_HOME`, and that the MCP
+server was not started with `TYPESAFE_HISTORY=off`. Calls made before history
+existed are not in it. Without `node:sqlite` (Node < 22.5) each process keeps
+its history in memory, and the dashboard cannot see it.
+
 **Answers seem stale.** Pass `"cache": false` for one call, or clear the cache:
 
 ```bash
@@ -678,15 +790,20 @@ node src/server.mjs --clear-cache
 npm test          # the full suite, on the built-in node --test runner
 npm run selftest  # one live call against the real API
 npm run stats     # usage over the last 7 days
+npm run ui        # the call-history dashboard
 ```
 
 ```text
 jev-bridge/
 ├── src/
-│   ├── server.mjs        MCP protocol, the three tools, CLI, retries
-│   └── store.mjs         SQLite cache and usage log, memory fallback
+│   ├── server.mjs        MCP protocol, the five tools, CLI, retries
+│   ├── store.mjs         SQLite cache, usage log and history; memory fallback
+│   ├── history.mjs       certainty, filters and the stats a review reads
+│   ├── ui.mjs            the dashboard's local server: token, Host check, JSON API
+│   └── ui.html           the dashboard page, no network dependencies
 ├── test/
-│   └── server.test.mjs   35 tests
+│   ├── server.test.mjs   36 tests
+│   └── history.test.mjs  55 tests
 └── docs/
     ├── architecture.md   components, storage, cache keys, testing, decisions
     ├── recipes.md        six worked patterns with real output
