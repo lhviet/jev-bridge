@@ -1,6 +1,6 @@
 {
-  "generated": "2026-09-21T13:30:10.390Z",
-  "commit": "2db4bbe",
+  "generated": "2026-09-21T13:44:57.607Z",
+  "commit": "2fb5ac8",
   "modified": false,
   "node": "v24.21.0",
   "models": "jev-1.13.0",
@@ -47,17 +47,17 @@
           "department": {
             "type": "choice",
             "choice": "billing",
-            "confidence": 0.8,
+            "confidence": 0.78,
             "probabilities": {
               "sales": 0,
-              "technical": 0.13,
-              "billing": 0.87
+              "technical": 0.15,
+              "billing": 0.85
             }
           },
           "frustration": {
             "type": "score",
             "score": 1.04,
-            "confidence": 0.93,
+            "confidence": 0.94,
             "legend": {
               "0": "Calm",
               "1": "Frustrated",
@@ -76,11 +76,11 @@
         },
         "bridge": {
           "cached": false,
-          "latency_ms": 244.45,
+          "latency_ms": 206.85,
           "cost_usd": 0.000016758,
           "attempts": 1,
-          "request_id": "req_01a0c428e8c37d70956330c5a644a103",
-          "call_id": "d479883a-1"
+          "request_id": "req_01a0c4367251705d8d90a96964586eaf",
+          "call_id": "9f4a8f1e-1"
         }
       },
       "checks": [
@@ -146,10 +146,10 @@
             "choice": "issue_refund",
             "confidence": 1,
             "probabilities": {
-              "track_order": 0,
               "none": 0,
-              "issue_refund": 1,
-              "cancel_subscription": 0
+              "track_order": 0,
+              "cancel_subscription": 0,
+              "issue_refund": 1
             }
           },
           "refund_reason": {
@@ -157,9 +157,9 @@
             "choice": "damaged",
             "confidence": 1,
             "probabilities": {
-              "not_received": 0,
-              "damaged": 1,
               "wrong_item": 0,
+              "damaged": 1,
+              "not_received": 0,
               "changed_mind": 0
             }
           },
@@ -169,7 +169,7 @@
           },
           "needs_human": {
             "type": "noul",
-            "noul": 0.21
+            "noul": 0.2
           }
         },
         "usage": {
@@ -178,11 +178,11 @@
         },
         "bridge": {
           "cached": false,
-          "latency_ms": 104.9,
+          "latency_ms": 125.09,
           "cost_usd": 0.000022134000000000002,
           "attempts": 1,
-          "request_id": "req_01a0c428e95d7b9d8a7637fc807e1b88",
-          "call_id": "d479883a-2"
+          "request_id": "req_01a0c43672e779d08eea3975f1e30a86",
+          "call_id": "9f4a8f1e-2"
         }
       },
       "checks": [
@@ -265,8 +265,8 @@
         "answers": {
           "a": {
             "type": "score",
-            "score": 0.05,
-            "confidence": 0.95,
+            "score": 0.06,
+            "confidence": 0.94,
             "legend": {
               "0": "Unrelated",
               "1": "Same topic but does not answer it",
@@ -293,14 +293,14 @@
             "probabilities": {
               "0": 0,
               "1": 0,
-              "2": 0.01,
-              "3": 0.99
+              "2": 0,
+              "3": 1
             }
           },
           "c": {
             "type": "score",
-            "score": 1.08,
-            "confidence": 0.9,
+            "score": 1.09,
+            "confidence": 0.89,
             "legend": {
               "0": "Unrelated",
               "1": "Same topic but does not answer it",
@@ -309,15 +309,15 @@
             },
             "probabilities": {
               "0": 0.01,
-              "1": 0.9,
-              "2": 0.09,
+              "1": 0.89,
+              "2": 0.1,
               "3": 0
             }
           },
           "d": {
             "type": "score",
-            "score": 0.13,
-            "confidence": 0.87,
+            "score": 0.11,
+            "confidence": 0.89,
             "legend": {
               "0": "Unrelated",
               "1": "Same topic but does not answer it",
@@ -325,8 +325,8 @@
               "3": "Directly and completely answers it"
             },
             "probabilities": {
-              "0": 0.87,
-              "1": 0.13,
+              "0": 0.9,
+              "1": 0.1,
               "2": 0,
               "3": 0
             }
@@ -338,11 +338,11 @@
         },
         "bridge": {
           "cached": false,
-          "latency_ms": 166.19,
+          "latency_ms": 159.29,
           "cost_usd": 0.000027132,
           "attempts": 1,
-          "request_id": "req_01a0c428e9d47737acc9477c2f12d467",
-          "call_id": "d479883a-3"
+          "request_id": "req_01a0c436737474df98c6a764161dfc2c",
+          "call_id": "9f4a8f1e-3"
         }
       },
       "checks": [
@@ -397,11 +397,11 @@
         },
         "bridge": {
           "cached": false,
-          "latency_ms": 329.92,
+          "latency_ms": 99.35,
           "cost_usd": 0.000015624,
           "attempts": 1,
-          "request_id": "req_01a0c428ea6b71b58530df2668ea9592",
-          "call_id": "d479883a-4"
+          "request_id": "req_01a0c436740c771b9275a90b3894c40c",
+          "call_id": "9f4a8f1e-4"
         }
       },
       "checks": [
@@ -452,7 +452,7 @@
           },
           "requests_refund": {
             "type": "noul",
-            "noul": 0.97
+            "noul": 0.96
           },
           "churn_risk": {
             "type": "noul",
@@ -465,11 +465,11 @@
         },
         "bridge": {
           "cached": false,
-          "latency_ms": 111.27,
+          "latency_ms": 153.3,
           "cost_usd": 0.000014952000000000002,
           "attempts": 1,
-          "request_id": "req_01a0c428ebb9706eaf1335f2fb8e1cd2",
-          "call_id": "d479883a-5"
+          "request_id": "req_01a0c4367475730795a92947d3c5878d",
+          "call_id": "9f4a8f1e-5"
         }
       },
       "checks": [
@@ -517,8 +517,8 @@
               "25 Jan": 0,
               "none": 0,
               "3 Jan": 0,
-              "11 Jan": 1,
-              "5 Jan": 0
+              "5 Jan": 0,
+              "11 Jan": 1
             }
           }
         },
@@ -528,11 +528,11 @@
         },
         "bridge": {
           "cached": false,
-          "latency_ms": 107.52,
+          "latency_ms": 84.74,
           "cost_usd": 0.000016632000000000003,
           "attempts": 1,
-          "request_id": "req_01a0c428ec27764fa38ccfc0646185c8",
-          "call_id": "d479883a-6"
+          "request_id": "req_01a0c43675077504925a8bbe97be9803",
+          "call_id": "9f4a8f1e-6"
         }
       },
       "checks": [
@@ -574,8 +574,8 @@
         "answers": {
           "clarity": {
             "type": "score",
-            "score": 0.06,
-            "confidence": 0.94,
+            "score": 0.05,
+            "confidence": 0.95,
             "legend": {
               "0": "Says nothing useful",
               "1": "Names the area but not the change",
@@ -583,24 +583,24 @@
               "3": "Explains what changed and why"
             },
             "probabilities": {
-              "0": 0.94,
-              "1": 0.06,
+              "0": 0.95,
+              "1": 0.05,
               "2": 0,
               "3": 0
             }
           },
           "testability": {
             "type": "score",
-            "score": 0.18,
-            "confidence": 0.73,
+            "score": 0.19,
+            "confidence": 0.71,
             "legend": {
               "0": "No way to verify",
               "1": "Vague hint",
               "2": "Concrete steps or tests named"
             },
             "probabilities": {
-              "0": 0.82,
-              "1": 0.18,
+              "0": 0.81,
+              "1": 0.19,
               "2": 0
             }
           }
@@ -611,11 +611,11 @@
         },
         "bridge": {
           "cached": false,
-          "latency_ms": 89.49,
+          "latency_ms": 89.91,
           "cost_usd": 0.000016086,
           "attempts": 1,
-          "request_id": "req_01a0c428ec917bd38f8b3648e7b9406b",
-          "call_id": "d479883a-7"
+          "request_id": "req_01a0c436755870c1ac34b500c27a4fd0",
+          "call_id": "9f4a8f1e-7"
         }
       },
       "checks": [
