@@ -1,0 +1,55 @@
+name: Bug report
+description: Something is not working as described.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. **Please redact your TypeSafe API key** from anything you paste.
+        Security problems belong in a private report — see SECURITY.md — not here.
+  - type: input
+    id: version
+    attributes:
+      label: jev-bridge version
+      description: Output of `node src/server.mjs --version`
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: Output of `node --version`, run with the same interpreter your MCP client uses
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: MCP client
+      placeholder: Claude Code 2.x, Claude Desktop, Cursor…
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Include the exact error text and, if relevant, the stderr log lines prefixed `[jev-bridge]`.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The smallest `jev_ask` request or command that shows the problem.
+  - type: checkboxes
+    id: redacted
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have removed my API key from everything above.
+          required: true

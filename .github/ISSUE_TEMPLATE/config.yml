@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/lhviet/jev-bridge/security/advisories/new
+    about: Please report security problems privately, not as a public issue.
+  - name: TypeSafe API questions
+    url: https://docs.typesafe.ai
+    about: Questions about Jev itself, question design, or your TypeSafe account.

@@ -1,0 +1,738 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Jev bridge — how Claude Code talks to a probability model</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#EDF0F4;
+  --raised:#F8FAFC;
+  --white:#FFFFFF;
+  --ink:#16202E;
+  --ink-soft:#5A6B80;
+  --ink-faint:#8B99AB;
+  --rule:#C9D2DD;
+  --rule-soft:#DCE3EB;
+  --blue:#2540D9;
+  --blue-wash:#E5E9FB;
+  --warn:#9A3412;
+  --warn-wash:#FBEAE2;
+  --measure:68ch;
+  --radius:3px;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:'Archivo',system-ui,sans-serif;
+  font-size:16.5px;
+  line-height:1.62;
+  font-variant-numeric:tabular-nums;
+}
+/* the drafting grid, very faint */
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:linear-gradient(var(--rule-soft) 1px,transparent 1px),
+                   linear-gradient(90deg,var(--rule-soft) 1px,transparent 1px);
+  background-size:64px 64px;
+  opacity:.5;
+  mask-image:radial-gradient(ellipse 120% 80% at 50% 0%,#000 25%,transparent 78%);
+}
+.wrap{position:relative;z-index:1;max-width:980px;margin:0 auto;padding:0 28px 120px}
+
+/* ─ hero ─────────────────────────────────────────────── */
+header{padding:76px 0 24px}
+.kicker{
+  font-size:14px;color:var(--ink-soft);margin:0 0 20px;
+  font-feature-settings:"tnum";
+}
+.kicker b{color:var(--ink);font-weight:600}
+h1{
+  font-size:clamp(34px,5.6vw,56px);
+  line-height:1.04;
+  letter-spacing:-.028em;
+  font-weight:700;
+  margin:0 0 20px;
+  max-width:19ch;
+}
+.standfirst{font-size:19px;color:var(--ink-soft);max-width:60ch;margin:0 0 44px}
+
+/* the readout — the hero object */
+.readout{
+  background:var(--white);
+  border:1px solid var(--rule);
+  border-radius:var(--radius);
+  box-shadow:0 1px 0 var(--rule-soft);
+  padding:26px 28px 22px;
+  max-width:620px;
+}
+.readout .src{
+  font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.55;
+  color:var(--ink-soft);border-left:2px solid var(--blue);
+  padding:2px 0 2px calc(14px + 7ch);text-indent:-7ch;margin:0 0 22px;
+}
+.readout .q{font-size:15px;font-weight:600;margin:0 0 14px}
+.bar{display:grid;grid-template-columns:82px 1fr 46px;align-items:center;gap:12px;margin:0 0 7px}
+.bar span:first-child{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--ink)}
+.bar .track{height:9px;background:var(--rule-soft);border-radius:1px;overflow:hidden}
+.bar .fill{display:block;height:100%;background:var(--blue);width:0;transform-origin:left;transition:width 1.1s cubic-bezier(.22,.9,.3,1)}
+.bar.dim .fill{background:var(--ink-faint)}
+.bar .val{font-family:'IBM Plex Mono',monospace;font-size:12.5px;text-align:right;color:var(--ink-soft)}
+.readout .foot{
+  margin:18px 0 0;padding-top:14px;border-top:1px solid var(--rule-soft);
+  font-size:13px;color:var(--ink-soft);display:flex;gap:22px;flex-wrap:wrap;
+}
+.readout .foot b{color:var(--ink);font-weight:600}
+@media (prefers-reduced-motion:reduce){.bar .fill{transition:none}}
+
+/* ─ structure ────────────────────────────────────────── */
+section{padding:60px 0 0}
+h2{
+  font-size:26px;letter-spacing:-.018em;font-weight:700;margin:0 0 6px;
+  padding-bottom:12px;border-bottom:2px solid var(--ink);
+}
+h2 + .sub{color:var(--ink-soft);margin:14px 0 26px;max-width:var(--measure)}
+h3{font-size:17px;font-weight:600;margin:32px 0 8px;letter-spacing:-.01em}
+p{max-width:var(--measure);margin:0 0 16px}
+ul{max-width:var(--measure);padding-left:20px;margin:0 0 16px}
+li{margin:0 0 7px}
+strong{font-weight:600}
+code{
+  font-family:'IBM Plex Mono',monospace;font-size:.875em;
+  background:var(--blue-wash);color:#1B2C9E;padding:1px 5px;border-radius:2px;
+}
+a{color:var(--blue)}
+
+/* verdict block */
+.verdict{
+  max-width:760px;
+  background:var(--white);border:1px solid var(--rule);border-left:4px solid var(--blue);
+  border-radius:var(--radius);padding:22px 26px;margin:0 0 28px;
+}
+.verdict p{margin:0;max-width:62ch}
+.verdict .lead{font-size:20px;font-weight:600;letter-spacing:-.012em;margin:0 0 8px}
+
+/* figure + mermaid */
+figure{margin:28px 0 30px}
+.diagram{
+  background:var(--white);border:1px solid var(--rule);border-radius:var(--radius);
+  padding:26px 20px;overflow-x:auto;
+}
+.diagram .mermaid{text-align:center}
+figcaption{
+  font-size:13.5px;color:var(--ink-soft);margin-top:11px;max-width:var(--measure);
+  padding-left:13px;border-left:2px solid var(--rule);
+}
+
+/* code */
+pre{
+  background:var(--ink);color:#DCE6F5;border-radius:var(--radius);
+  padding:18px 20px;overflow-x:auto;margin:0 0 18px;
+  font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.66;
+}
+/* a mermaid source block is a <pre> too, so it must opt out of the code slab */
+pre.mermaid{background:none;color:inherit;padding:0;margin:0;border-radius:0;overflow:visible;font-size:inherit;line-height:normal}
+pre .c{color:#7E91AB}
+pre .k{color:#9FC0FF}
+pre .s{color:#BFE3C0}
+pre .n{color:#F0C892}
+
+/* two-up */
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:0 0 20px}
+.pair > div{background:var(--white);border:1px solid var(--rule);border-radius:var(--radius);padding:18px 20px}
+.pair h4{margin:0 0 10px;font-size:14px;font-weight:600}
+.pair.gap h4{color:var(--warn)}
+.pair ul{margin:0;font-size:14.5px;padding-left:18px}
+@media(max-width:720px){
+  /* the result tables carry four columns; a phone has room for two and a bar */
+  .res .kind{display:none}
+  .res .meter{min-width:56px;width:32%}
+  .case{padding:18px 16px}
+  .pair{grid-template-columns:1fr}
+  td:first-child{white-space:normal}
+  th,td{padding:9px 10px}
+  table{font-size:13.5px}
+  td code{overflow-wrap:anywhere}
+  .rank{white-space:normal}
+}
+
+/* table */
+/* a table's min-content can exceed a phone; it scrolls inside itself, the page never does */
+.table-scroll{overflow-x:auto;margin:0 0 20px;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;margin:0;font-size:14.5px;background:var(--white)}
+caption{text-align:left;color:var(--ink-soft);font-size:13.5px;padding:0 0 9px}
+th,td{text-align:left;padding:11px 14px;border:1px solid var(--rule-soft);vertical-align:top}
+th{background:var(--raised);font-weight:600;font-size:13.5px}
+td:first-child{font-weight:500;white-space:nowrap}
+.rank{background:var(--blue);color:#fff;border-radius:2px;padding:1px 7px;font-size:12px;font-weight:600;display:inline-block}
+.rank.mid{background:var(--ink-soft)}
+.rank.low{background:var(--rule);color:var(--ink-soft)}
+
+footer{margin-top:72px;padding-top:26px;border-top:1px solid var(--rule);color:var(--ink-soft);font-size:14px}
+footer p{max-width:var(--measure)}
+
+/* added for the second edition */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:1px;background:var(--rule);
+  border:1px solid var(--rule);border-radius:var(--radius);margin:34px 0 0}
+.stats div{background:var(--white);padding:15px 18px}
+.stats b{display:block;font-size:23px;letter-spacing:-.022em;line-height:1.15;margin-bottom:3px}
+.stats span{font-size:12.5px;color:var(--ink-soft)}
+.done,.todo{list-style:none;padding:0;max-width:var(--measure)}
+.done li,.todo li{padding-left:26px;position:relative;margin-bottom:13px}
+.done li::before{content:"";position:absolute;left:3px;top:.6em;width:9px;height:9px;background:var(--blue);border-radius:1px}
+.todo li::before{content:"";position:absolute;left:3px;top:.6em;width:9px;height:9px;border:1.5px solid var(--ink-faint);border-radius:1px}
+.note{border-left:2px solid var(--rule);padding-left:14px;color:var(--ink-soft);font-size:14.5px;max-width:var(--measure)}
+
+/* contents, file trees, worked cases */
+.toc{display:flex;flex-wrap:wrap;gap:0 20px;margin:42px 0 0;padding-top:18px;border-top:1px solid var(--rule);font-size:14px}
+.toc a{color:var(--ink-soft);text-decoration:none;padding:4px 0;border-bottom:1px solid transparent}
+.toc a:hover,.toc a:focus-visible{color:var(--blue);border-bottom-color:var(--blue)}
+.tree{background:var(--white);border:1px solid var(--rule);border-radius:var(--radius);padding:20px 22px;
+  font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.75;overflow-x:auto;margin:0 0 16px;color:var(--ink);
+  white-space:pre}
+.tree .tot{white-space:pre-wrap}
+.tree .d{color:var(--blue);font-weight:600}
+.tree .s{color:var(--ink-faint)}
+.tree .m{color:var(--ink-soft)}
+.tree .tot{border-top:1px solid var(--rule-soft);display:block;margin-top:10px;padding-top:10px;color:var(--ink-soft)}
+.case{border:1px solid var(--rule);border-radius:var(--radius);background:var(--white);padding:21px 24px;margin:0 0 18px}
+.case h3{margin:0 0 6px;font-size:16.5px}
+.case > p{font-size:14.5px;color:var(--ink-soft);margin:0 0 14px;max-width:64ch}
+.case .state{font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.6;color:var(--ink-soft);
+  border-left:2px solid var(--blue);padding:3px 0 3px 12px;margin:0 0 15px;white-space:pre-wrap}
+.case .after{font-size:13.5px;color:var(--ink-soft);margin:14px 0 0;padding-top:12px;border-top:1px solid var(--rule-soft)}
+.res{width:100%;border-collapse:collapse;font-size:13.5px;background:none}
+.res td{padding:5px 8px 5px 0;border:0;border-bottom:1px solid var(--rule-soft);vertical-align:middle}
+.res tr:last-child td{border-bottom:0}
+.res .id{font-family:'IBM Plex Mono',monospace;white-space:nowrap}
+.res .kind{color:var(--ink-faint);font-size:11.5px;white-space:nowrap}
+.res .meter{width:38%;min-width:90px}
+.res .meter i{display:block;height:7px;background:var(--rule-soft);border-radius:1px}
+.res .meter i b{display:block;height:100%;background:var(--blue);border-radius:1px}
+.res .meter.dim i b{background:var(--ink-faint)}
+.res .val{font-family:'IBM Plex Mono',monospace;font-weight:600;text-align:right;white-space:nowrap}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <p class="kicker">jev-bridge 0.1.0 — written 20 September 2026, against <b>Jev&nbsp;1.13.0</b>.</p>
+  <h1>Claude Code asks a question. Jev answers with a probability.</h1>
+  <p class="standfirst">The TypeSafe plugin could only ever tell me <em>how</em> to write a good question. It had no way to send one. This is the piece that sends it — and, now, remembers the answer and keeps the books.</p>
+
+  <div class="readout">
+    <p class="src">state: "Help! My payouts have been failing for 3 days."</p>
+    <p class="q">Which team should handle this?</p>
+    <div class="bar"><span>billing</span><span class="track"><span class="fill" data-w="87"></span></span><span class="val">0.87</span></div>
+    <div class="bar"><span>technical</span><span class="track"><span class="fill" data-w="13"></span></span><span class="val">0.13</span></div>
+    <div class="bar dim"><span>sales</span><span class="track"><span class="fill" data-w="0.6"></span></span><span class="val">0.00</span></div>
+    <p class="foot"><span>confidence <b>0.80</b></span><span>399 input tokens</span><span>cost <b>$0.0000168</b></span></p>
+  </div>
+
+  <div class="stats">
+    <div><b>184 ms</b><span>a live answer</span></div>
+    <div><b>0.077 ms</b><span>the same answer again</span></div>
+    <div><b>2,370&times;</b><span>faster on a repeat</span></div>
+    <div><b>35</b><span>tests, all green</span></div>
+    <div><b>0</b><span>dependencies</span></div>
+  </div>
+
+  <nav class="toc">
+    <a href="#inventory">What is in the plugin</a>
+    <a href="#hosting">Is anything hosted</a>
+    <a href="#flow">What happens when I ask</a>
+    <a href="#cases">Six things worth asking</a>
+    <a href="#shape">The shape of a call</a>
+    <a href="#sqlite">Why SQLite</a>
+    <a href="#idbug">The bug the cache had</a>
+    <a href="#key">Where the key lives</a>
+    <a href="#tests">How it is tested</a>
+    <a href="#status">Built, declined, left</a>
+    <a href="#using">Working with it</a>
+  </nav>
+</header>
+
+<section id="inventory">
+  <h2>What is in the plugin: six files, none of them code</h2>
+  <p class="sub">A Claude Code &ldquo;skill&rdquo; is not a program. It is text loaded into my context. Counting the files is the quickest way to see why a bridge had to exist.</p>
+
+  <h3>The plugin, as installed</h3>
+<div class="tree"><span class="d">~/.claude/plugins/cache/typesafe-ai/typesafe/0.5.7/</span>
+├── <span class="d">.claude-plugin/</span>
+│   ├── marketplace.json          <span class="s">382 B</span>  <span class="m">names the plugin for the marketplace</span>
+│   └── plugin.json               <span class="s">320 B</span>  <span class="m">name, version, author, licence</span>
+├── <span class="d">skills/</span>
+│   └── <span class="d">typesafe-ai/</span>
+│       ├── LICENSE              <span class="s">1068 B</span>  <span class="m">MIT, identical to the one above</span>
+│       └── SKILL.md            <span class="s">10040 B</span>  <span class="m">the entire product: guidance for the agent</span>
+├── LICENSE                      <span class="s">1068 B</span>  <span class="m">MIT</span>
+└── README.md                    <span class="s">1336 B</span>  <span class="m">install instructions</span>
+<span class="tot"><b>6 files, 4 directories, 14,214 bytes.</b> No <code>.js</code>, <code>.mjs</code>, <code>.py</code>, <code>.sh</code> or <code>.ts</code> anywhere —
+<b>zero bytes of anything executable.</b> SKILL.md alone is 71% of it.</span></div>
+
+  <p>Two details worth pointing at. The two <code>LICENSE</code> files are <strong>byte-for-byte identical</strong> — git stores them as one object, and they account for 15% of the plugin between them. And <code>SKILL.md</code> is not configuration: it is prose that gets pasted into my context, which is why it can tell me how to phrase a <code>score</code> rubric but can never open a socket.</p>
+
+  <p class="note">A seventh, eighth and ninth file appear on disk — <code>.in_use/51370</code> and friends. Those are lock markers Claude Code writes, one per process holding the plugin, not part of what TypeSafe ships. The upstream git tree at tag <code>v0.5.7</code> contains exactly the six above, and the marketplace clone beside it is the same six plus a 136&nbsp;KB <code>.git</code>.</p>
+
+  <div class="pair gap">
+    <div>
+      <h4>What the plugin can do</h4>
+      <ul><li>tell me the three question types</li><li>tell me how to write criteria</li><li>point me at the live docs</li></ul>
+    </div>
+    <div>
+      <h4>What a live call needs</h4>
+      <ul><li>something holding an API key</li><li>something that can open a socket</li><li>something Claude Code can <em>invoke</em></li></ul>
+      <p style="font-size:14px;margin:12px 0 0;color:var(--ink-soft)">None of these fit in a Markdown file.</p>
+    </div>
+  </div>
+
+  <p>TypeSafe themselves publish no MCP server — not in that repo, not among their ten GitHub repositories, and the word never appears in their documentation index. Their two SDKs are libraries with no executable. jev-bridge is therefore <strong>independent code</strong>; only the <em>API contract</em> it speaks is theirs. (A separate third-party server, <a href="https://github.com/rashedInt32/jev-mcp">jev-mcp</a>, appeared on npm in September 2026 — built on the official SDKs, with different trade-offs.)</p>
+
+  <h3>The bridge, which is the part that runs</h3>
+<div class="tree"><span class="d">jev-bridge/</span>                       <span class="m">the repository</span>
+├── <span class="d">src/</span>
+│   ├── server.mjs          <span class="s">571 lines</span>  <span class="m">MCP protocol, the 3 tools, CLI, retries</span>
+│   └── store.mjs           <span class="s">289 lines</span>  <span class="m">SQLite cache + usage log, memory fallback</span>
+├── <span class="d">test/</span>
+│   └── server.test.mjs     <span class="s">380 lines</span>  <span class="m">35 tests, run by node --test</span>
+├── <span class="d">docs/</span>                            <span class="m">recipes.md, and this page</span>
+├── LICENSE                            <span class="m">MIT</span>
+└── package.json                       <span class="m">no dependencies</span>
+<span class="tot"><b>1,240 lines of JavaScript, 0 dependencies.</b></span></div>
+<div class="tree"><span class="d">~/.jev-bridge/</span>                    <span class="m">created 0700 on first use</span>
+├── .env                    <span class="s">chmod 600</span>  <span class="m">your API key, and nothing else</span>
+└── jev.db                             <span class="m">cached answers + the usage log</span>
+<span class="tot">While the database is open, SQLite adds <code>jev.db-wal</code> and <code>jev.db-shm</code> beside it;
+a checkpoint folds them back in.</span></div>
+</section>
+
+<section id="hosting">
+  <h2>No, we are not hosting anything</h2>
+  <p class="sub">The word &ldquo;server&rdquo; misleads here. It suggests a machine, a port, a bill. There is none of that.</p>
+
+  <div class="verdict">
+    <p class="lead">It is a subprocess, not a service.</p>
+    <p>Claude Code starts <code>node server.mjs</code> as a child process and talks to it down an ordinary pipe. It listens on no port, accepts no inbound connection, and exits with your session. The only hosted thing is Jev, on TypeSafe's infrastructure, reached over plain HTTPS.</p>
+  </div>
+
+  <figure>
+    <div class="diagram">
+<pre class="mermaid">
+flowchart TB
+  subgraph MAC["Your Mac"]
+    direction TB
+    CC["Claude Code<br/>(CLI process)"]
+    SRV["server.mjs<br/>child process · stdio only"]
+    KEY[("TYPESAFE_API_KEY<br/>.env · chmod 600")]
+    DB[("jev.db<br/>answers + usage")]
+    CC <== "JSON-RPC 2.0<br/>over stdin / stdout" ==> SRV
+    KEY -. "read per call" .-> SRV
+    SRV <== "hit: 0.08 ms" ==> DB
+  end
+
+  subgraph ANT["Anthropic"]
+    MODEL["Claude<br/>decides when to ask"]
+  end
+
+  subgraph TS["TypeSafe"]
+    API["api.typesafe.ai/v1"]
+    JEV["Jev 1.13.0"]
+    API --> JEV
+  end
+
+  CC <-- "conversation +<br/>tool results" --> MODEL
+  SRV -- "on a miss only:<br/>HTTPS + Bearer" --> API
+
+  classDef zone fill:#F8FAFC,stroke:#C9D2DD,color:#16202E
+  classDef box fill:#FFFFFF,stroke:#2540D9,color:#16202E
+  classDef secret fill:#FBEAE2,stroke:#9A3412,color:#9A3412
+  class MAC,ANT,TS zone
+  class CC,SRV,MODEL,API,JEV,DB box
+  class KEY secret
+</pre>
+    </div>
+    <figcaption>Three trust zones. The key is read inside your machine and attached to a request going straight to TypeSafe — it never travels to Anthropic, and is never written into any config file. Since the answer store sits beside the bridge, a repeated question never leaves the Mac at all.</figcaption>
+  </figure>
+
+  <p>This is also why one registration serves every project: there is no per-project deployment. One file on disk, one line in the user-scope config, available everywhere.</p>
+</section>
+
+<section id="flow">
+  <h2>What happens when I ask</h2>
+  <p class="sub">MCP is a small protocol: line-delimited JSON-RPC over a pipe. The handshake runs once; everything after is a tool call.</p>
+
+  <figure>
+    <div class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant CC as Claude Code
+  participant S as server.mjs
+  participant DB as jev.db
+  participant T as api.typesafe.ai
+
+  CC->>S: tools/call jev_ask {state, questions}
+  S->>S: validate every question
+  Note right of S: a malformed question stops here,<br/>naming its own field, at no cost
+  S->>S: fingerprint the questions — ids excluded
+  S->>DB: look up state + questions + model
+
+  alt stored, still fresh, same model
+    DB-->>S: the answers
+    S->>DB: log a hit — 0 tokens
+    S-->>CC: answers · cached:true · 0.08 ms
+  else nothing usable stored
+    S->>T: POST /v1/systemone + Bearer
+    alt 429 or 529
+      T-->>S: rate limited / overloaded
+      S->>S: sleep(retry-after), back off, retry
+    end
+    T-->>S: 200 — answers + usage
+    S->>DB: store answers, log tokens and cost
+    S-->>CC: answers · cached:false · ~180 ms
+  end
+</pre>
+    </div>
+    <figcaption>Errors are never stored. A 529 today must not become a week of cached failure, so only a 200 is written — a rule with a test of its own.</figcaption>
+  </figure>
+
+  <h3>The three question types</h3>
+  <div class="table-scroll">
+  <table>
+    <caption>What to reach for, and what comes back</caption>
+    <tr><th>Type</th><th>Ask it when</th><th>You get back</th></tr>
+    <tr><td><code>noul</code></td><td>A condition either holds or it doesn't</td><td>One probability, 0 → 1. No separate confidence. <strong>0.5 means genuinely torn</strong>, not &ldquo;medium&rdquo;.</td></tr>
+    <tr><td><code>choice</code></td><td>Exactly one option from a set you define</td><td>The winner, the full distribution, and a confidence.</td></tr>
+    <tr><td><code>score</code></td><td>A degree along a rubric you describe</td><td>A weighted position that can land <em>between</em> your levels, plus legend and distribution.</td></tr>
+  </table>
+  </div>
+</section>
+
+<section id="cases">
+  <h2>Six things worth asking Jev</h2>
+  <p class="sub">Every number below came back from the live API while this page was being written. None of it is illustrative.</p>
+
+  <div class="case">
+    <h3>1. Route a request and fill its arguments in the same trip</h3>
+    <p>Pick the handler <em>and</em> the arguments each branch would need, all at once. The questions cannot see each other, so you state the branch as a premise — &ldquo;IF this is a refund&hellip;&rdquo; — and your code reads only the answers that apply.</p>
+    <p class="state">"Can you refund my last order? The mug arrived cracked and I have photos."</p>
+    <table class="res">
+      <tr><td class="id">handler</td><td class="kind">choice</td><td class="meter"><i><b style="width:100%"></b></i></td><td class="val">issue_refund</td></tr>
+      <tr><td class="id">refund_reason</td><td class="kind">choice</td><td class="meter"><i><b style="width:100%"></b></i></td><td class="val">damaged</td></tr>
+      <tr><td class="id">has_evidence</td><td class="kind">noul</td><td class="meter"><i><b style="width:99%"></b></i></td><td class="val">0.99</td></tr>
+      <tr><td class="id">needs_human</td><td class="kind">noul</td><td class="meter dim"><i><b style="width:20%"></b></i></td><td class="val">0.20</td></tr>
+    </table>
+    <p class="after">Both choices came back at confidence <strong>1.00</strong>, every rival option at zero. One round trip, 527 input tokens, 233&nbsp;ms — a router and its arguments for $0.000022.</p>
+  </div>
+
+  <div class="case">
+    <h3>2. Rerank what your search returned</h3>
+    <p>Retrieval gets you candidates; it does not know which one answers the question. Give each passage its own comparable <code>score</code> against the query, in a single call, and sort in code.</p>
+    <p class="state">query: "How do I rotate the API key without downtime?"</p>
+    <table class="res">
+      <tr><td class="id">b</td><td class="kind">score 0–3</td><td class="meter"><i><b style="width:99.7%"></b></i></td><td class="val">2.99</td></tr>
+      <tr><td class="id">c</td><td class="kind">score 0–3</td><td class="meter"><i><b style="width:35.3%"></b></i></td><td class="val">1.06</td></tr>
+      <tr><td class="id">d</td><td class="kind">score 0–3</td><td class="meter dim"><i><b style="width:3.3%"></b></i></td><td class="val">0.10</td></tr>
+      <tr><td class="id">a</td><td class="kind">score 0–3</td><td class="meter dim"><i><b style="width:2%"></b></i></td><td class="val">0.06</td></tr>
+    </table>
+    <p class="after">Passage <strong>b</strong> (&ldquo;add the new key first, deploy, then revoke the old one&rdquo;) lands at the top level. The instructive one is <strong>c</strong> at 1.06: it is <em>about</em> API keys but never answers the question, and it scores exactly one level up from the unrelated pair. A keyword search would have ranked it first.</p>
+  </div>
+
+  <div class="case">
+    <h3>3. Check a claim against its evidence</h3>
+    <p>The guard to put in front of anything a language model asserts. Ask support and contradiction <em>separately</em> — &ldquo;unsupported&rdquo; and &ldquo;contradicted&rdquo; are different failures and deserve different handling.</p>
+    <p class="state">claim:  "The free plan includes 10 GB of storage."
+source: "Free accounts may store up to 2 GB. Pro accounts include 100 GB…"</p>
+    <table class="res">
+      <tr><td class="id">supported</td><td class="kind">noul</td><td class="meter dim"><i><b style="width:1%"></b></i></td><td class="val">0.01</td></tr>
+      <tr><td class="id">contradicted</td><td class="kind">noul</td><td class="meter"><i><b style="width:95%"></b></i></td><td class="val">0.95</td></tr>
+    </table>
+    <p class="after">A plausible-looking number, caught. Note it is not merely unsupported — 0.95 says the source says otherwise, which is the case to escalate rather than quietly drop.</p>
+  </div>
+
+  <div class="case">
+    <h3>4. Apply labels that can all be true at once</h3>
+    <p>The most common modelling mistake is reaching for <code>choice</code> here. A choice forces one winner and would have to discard three true facts. One <code>noul</code> per label is the answer.</p>
+    <p class="state">"Third time this week the export button does nothing. I am on the Pro plan
+paying $40/mo and I want a refund if this is not fixed today."</p>
+    <table class="res">
+      <tr><td class="id">reports_bug</td><td class="kind">noul</td><td class="meter"><i><b style="width:97%"></b></i></td><td class="val">0.97</td></tr>
+      <tr><td class="id">mentions_billing</td><td class="kind">noul</td><td class="meter"><i><b style="width:99%"></b></i></td><td class="val">0.99</td></tr>
+      <tr><td class="id">requests_refund</td><td class="kind">noul</td><td class="meter"><i><b style="width:97%"></b></i></td><td class="val">0.97</td></tr>
+      <tr><td class="id">churn_risk</td><td class="kind">noul</td><td class="meter"><i><b style="width:88%"></b></i></td><td class="val">0.88</td></tr>
+    </table>
+    <p class="after">All four are true, and the message is one sentence. <code>churn_risk</code> sits lower at 0.88 because it is inferred rather than stated — which is the honest answer, and a useful one to threshold on.</p>
+  </div>
+
+  <div class="case">
+    <h3>5. Let code find the candidates, and Jev pick the right one</h3>
+    <p>Do not ask a model to extract a date — ask it to <em>choose</em> one. A regex finds every date reliably; only the choice needs judgment. The value you copy is then guaranteed to be one that really occurs in the source.</p>
+    <p class="state">"Ordered 3 Jan, dispatched 5 Jan, and it should reach you by 11 Jan.
+ Returns close 25 Jan."        candidates: [3 Jan, 5 Jan, 11 Jan, 25 Jan]</p>
+    <table class="res">
+      <tr><td class="id">delivery_date</td><td class="kind">choice</td><td class="meter"><i><b style="width:100%"></b></i></td><td class="val">11 Jan</td></tr>
+    </table>
+    <p class="after">Confidence 1.00, with the three decoy dates at zero. Include a <code>none</code> option, as this did: without one, a set of candidates that misses the real answer forces a confident wrong pick.</p>
+  </div>
+
+  <div class="case">
+    <h3>6. Score the dimensions once, decide the policy in code</h3>
+    <p>Keep the judgment and the policy apart. Jev rates each dimension; your code weights them. Changing a weight or a threshold then costs nothing, because the evidence has not changed and nothing needs re-asking.</p>
+    <p class="state">A pull request description, in full: "Fixes the thing. See ticket."</p>
+    <table class="res">
+      <tr><td class="id">clarity</td><td class="kind">score 0–3</td><td class="meter dim"><i><b style="width:1.7%"></b></i></td><td class="val">0.05</td></tr>
+      <tr><td class="id">testability</td><td class="kind">score 0–2</td><td class="meter dim"><i><b style="width:10%"></b></i></td><td class="val">0.20</td></tr>
+    </table>
+    <p class="after">In code: <code>0.6&thinsp;&times;&thinsp;clarity/3 + 0.4&thinsp;&times;&thinsp;testability/2 = <b>0.05</b></code>. Worth noticing that <code>testability</code> came back at confidence <strong>0.69</strong>, the lowest of anything on this page — there is genuinely little to judge in six words, and the model says so rather than guessing firmly.</p>
+  </div>
+
+  <p class="note">All six ran in 1.3 seconds and cost <strong>$0.000162</strong> together. Every one is now cached, so re-running the page's examples costs nothing.</p>
+</section>
+
+<section id="shape">
+  <h2>The shape of a call, and what it costs</h2>
+
+  <h3>One state, three questions, one round trip</h3>
+  <p>Independent questions ride together — Jev reads the state once and answers all of them in parallel.</p>
+<pre><span class="c">// tools/call → jev_ask</span>
+{
+  <span class="k">"state"</span>: <span class="s">"Help! My payouts have been failing for 3 days."</span>,
+  <span class="k">"questions"</span>: {
+    <span class="k">"is_urgent"</span>:   { <span class="k">"type"</span>: <span class="s">"noul"</span>,   <span class="k">"instructions"</span>: <span class="s">"Does this convey urgency?"</span> },
+    <span class="k">"department"</span>:  { <span class="k">"type"</span>: <span class="s">"choice"</span>, <span class="k">"instructions"</span>: <span class="s">"Which team should handle this?"</span>,
+                      <span class="k">"criteria"</span>: { <span class="k">"billing"</span>:   <span class="s">"Payments, invoicing, refunds"</span>,
+                                    <span class="k">"technical"</span>: <span class="s">"Bugs, outages, integrations"</span>,
+                                    <span class="k">"sales"</span>:     <span class="s">"Pricing, upgrades"</span> } },
+    <span class="k">"frustration"</span>: { <span class="k">"type"</span>: <span class="s">"score"</span>,  <span class="k">"instructions"</span>: <span class="s">"How frustrated is the customer?"</span>,
+                      <span class="k">"criteria"</span>: [<span class="s">"Calm"</span>, <span class="s">"Frustrated"</span>, <span class="s">"Very angry"</span>] }
+  }
+}</pre>
+<pre><span class="c">// ← 200 from jev-1.13.0</span>
+{ <span class="k">"is_urgent"</span>:   { <span class="k">"noul"</span>: <span class="n">0.95</span> },
+  <span class="k">"department"</span>:  { <span class="k">"choice"</span>: <span class="s">"billing"</span>, <span class="k">"confidence"</span>: <span class="n">0.80</span>,
+                   <span class="k">"probabilities"</span>: { <span class="k">"billing"</span>: <span class="n">0.87</span>, <span class="k">"technical"</span>: <span class="n">0.13</span>, <span class="k">"sales"</span>: <span class="n">0.0</span> } },
+  <span class="k">"frustration"</span>: { <span class="k">"score"</span>: <span class="n">1.05</span>, <span class="k">"confidence"</span>: <span class="n">0.92</span>,
+                   <span class="k">"legend"</span>: { <span class="k">"0"</span>: <span class="s">"Calm"</span>, <span class="k">"1"</span>: <span class="s">"Frustrated"</span>, <span class="k">"2"</span>: <span class="s">"Very angry"</span> },
+                   <span class="k">"probabilities"</span>: { <span class="k">"0"</span>: <span class="n">0.0</span>, <span class="k">"1"</span>: <span class="n">0.95</span>, <span class="k">"2"</span>: <span class="n">0.05</span> } } }
+<span class="c">// usage: 399 input / 73 output · bridge: cached false, 184 ms, $0.0000168</span></pre>
+  <p>The <code>frustration</code> score of <strong>1.05</strong> is the useful illustration: not level 1, but <em>just past</em> it, because 5% of the mass sits on &ldquo;Very angry&rdquo;. A plain label throws that away.</p>
+
+  <h3>Is Jev deterministic? Nearly</h3>
+  <p>Worth checking, since a cache freezes one answer. Three identical live calls:</p>
+  <div class="table-scroll">
+  <table>
+    <tr><th>run</th><th>is_urgent</th><th>billing</th><th>frustration</th><th>latency</th></tr>
+    <tr><td>1</td><td>0.95</td><td>0.89</td><td>1.05</td><td>235 ms</td></tr>
+    <tr><td>2</td><td>0.95</td><td>0.85</td><td>1.04</td><td>195 ms</td></tr>
+    <tr><td>3</td><td>0.95</td><td>0.86</td><td>1.04</td><td>121 ms</td></tr>
+  </table>
+  </div>
+  <p>The <em>decisions</em> never move — billing every time, the same noul. The probabilities wobble by about 0.02 in the second decimal. So caching is safe, and it even makes repeated runs more reproducible than the API is. The one caution: if you tune a threshold right at a boundary, a cached answer pins one sample of that wobble. Pass <code>cache: false</code> when you are measuring rather than deciding.</p>
+
+  <h3>What it costs</h3>
+  <p>Input is billed at $42 per billion tokens and output is free, so the 399-token call above cost about <strong>$0.0000168</strong> — roughly <strong>60,000 calls per dollar</strong>. Jev's ceilings are 64k tokens per request (32k for state plus the longest single question), 1,200 requests per minute, and 250,000 tokens per second.</p>
+</section>
+
+<section id="sqlite">
+  <h2>Why SQLite, and not a JSON file</h2>
+  <p class="sub">Two things had to be saved: answers, so a repeat costs nothing, and usage, so spend is a number you can look at.</p>
+
+  <p>The deciding constraint is not speed. It is that <strong>every Claude Code session starts its own bridge process</strong>, and they all share one store. That rules out most of the simple options before performance is even discussed.</p>
+
+  <div class="table-scroll">
+  <table>
+    <caption>Judged against the way this store is actually used</caption>
+    <tr><th>Option</th><th>Find one answer</th><th>Two sessions writing at once</th><th>Evicting old entries</th></tr>
+    <tr><td>JSON file</td><td>load the whole file</td><td><strong>loses whichever write lands second</strong></td><td>rewrite everything</td></tr>
+    <tr><td>CSV</td><td>scan every row</td><td>appends survive, edits do not</td><td>rewrite everything</td></tr>
+    <tr><td>JSONL</td><td>load it all into memory</td><td>appends survive</td><td>needs compaction, which races</td></tr>
+    <tr><td>XML</td><td>parse the whole document</td><td>same failure as JSON</td><td>rewrite everything</td></tr>
+    <tr><td><strong>SQLite</strong></td><td>indexed lookup</td><td><strong>built for it</strong> (WAL)</td><td>one statement</td></tr>
+  </table>
+  </div>
+
+  <p>And it costs no dependency: <code>node:sqlite</code> is <strong>built into Node</strong> from 22.5 onward. The bridge still installs nothing.</p>
+
+  <figure>
+    <div class="diagram">
+<pre class="mermaid">
+flowchart LR
+  A["session A<br/>server.mjs"] --> DB[("jev.db<br/>WAL + busy_timeout")]
+  B["session B<br/>server.mjs"] --> DB
+  C["session C<br/>server.mjs"] --> DB
+  DB --> R["800 writes from 2 processes,<br/>nothing lost"]
+
+  classDef n fill:#FFFFFF,stroke:#2540D9,color:#16202E
+  classDef s fill:#F8FAFC,stroke:#5A6B80,color:#16202E
+  classDef g fill:#E5E9FB,stroke:#2540D9,color:#1B2C9E
+  class A,B,C n
+  class DB s
+  class R g
+</pre>
+    </div>
+    <figcaption>Asserted by a test, not by argument: two real processes each write 400 entries to one file and every one survives. Delete the <code>busy_timeout</code> line and that test fails — which is exactly what a JSON file would do, quietly, with no line to delete.</figcaption>
+  </figure>
+
+  <h3>The three tables</h3>
+<div class="tree"><span class="d">jev.db</span>
+├── <span class="d">cache</span>     <span class="m">key (sha256) · requested_model · resolved_model · response</span>
+│             <span class="m">created_at · last_hit_at · hits        — WITHOUT ROWID, indexed by use</span>
+├── <span class="d">calls</span>     <span class="m">ts · cached · questions · input_tokens · output_tokens</span>
+│             <span class="m">saved_input_tokens · saved_usd · latency_ms · cost_usd · status</span>
+└── <span class="d">aliases</span>   <span class="m">requested → resolved — how a moved model alias is noticed</span>
+<span class="tot">The cache stores <b>answers only</b>. Your <code>state</code> and your questions are never written to disk —
+the key is a hash of them, which cannot be read back.</span></div>
+
+  <div class="stats" style="margin-top:22px">
+    <div><b>184 ms</b><span>live, average of 3</span></div>
+    <div><b>0.077 ms</b><span>cached, median of 20</span></div>
+    <div><b>$0</b><span>cost of a hit</span></div>
+    <div><b>45 KB</b><span>the whole database</span></div>
+  </div>
+</section>
+
+<section id="idbug">
+  <h2>The bug the cache had, found by using it</h2>
+  <p class="sub">The unit tests passed. Driving it from a real Claude Code session showed the cache almost never hitting.</p>
+
+  <p>Two sessions asked the identical thing. The only difference:</p>
+<pre><span class="c">// session A</span>
+{ <span class="k">"urgency"</span>:       { <span class="k">"type"</span>: <span class="s">"noul"</span>, <span class="k">"instructions"</span>: <span class="s">"Does this convey urgency?"</span> } }
+<span class="c">// session B</span>
+{ <span class="k">"urgency_check"</span>: { <span class="k">"type"</span>: <span class="s">"noul"</span>, <span class="k">"instructions"</span>: <span class="s">"Does this convey urgency?"</span> } }</pre>
+  <p>Same state, same question, same type — a different <em>id</em>, invented by the model. TypeSafe's own contract says question ids are never sent to the model, so to Jev these are <strong>one question</strong>. The first cache keyed on them anyway, and since an LLM picks a fresh id each run, it would have missed nearly every time it mattered.</p>
+  <p>Now a question is fingerprinted by its <em>meaning</em>, ids are excluded from the key, and answers are handed back under whatever ids the caller used. Against the live API:</p>
+<pre><span class="c">call 1  id=alpha         cached=false  {"alpha": {"noul": 0.97}}   166.02 ms</span>
+<span class="c">call 2  id=beta          cached=true   {"beta":  {"noul": 0.97}}     0.15 ms</span>
+<span class="c">call 3  reworded text    cached=false  — a different question must miss</span></pre>
+  <p class="note">A caveat worth knowing: an agent rephrases. Two independent sessions asked the same thing in words that differed by 46 tokens, and correctly missed. Expect hits within a session and from code that sends a fixed question — not across sessions where the model writes the question fresh each time.</p>
+</section>
+
+<section id="key">
+  <h2>Where the key lives</h2>
+  <p class="sub">A key belongs out of every file that gets shared. Here is how jev-bridge keeps it there.</p>
+  <ul>
+    <li>The recommended home is <code>~/.jev-bridge/.env</code> at <strong>chmod 600</strong>, in a directory the bridge creates at <strong>0700</strong>.</li>
+    <li>Registered that way, your MCP client's config holds <strong>only the script path</strong>. That matters because those config files are routinely synced, pasted into issues and committed to dotfile repositories.</li>
+    <li>The key is read fresh on every call, so rotating it is a one-file edit with no restart.</li>
+    <li>It is sent <strong>only</strong> to the TypeSafe API, as a Bearer header over HTTPS. It is never logged, never written to the database, and never returned in a tool result.</li>
+    <li><code>--selftest</code> prints the key's length and first eight characters, so you can tell <em>which</em> key loaded — and nothing more.</li>
+    <li>The repository's <code>.gitignore</code> excludes every <code>.env</code> and every database file, so a key placed in a clone cannot be committed by accident.</li>
+  </ul>
+  <p>The database stores answers, token counts and timings — never the content you asked about. See <a href="../SECURITY.md">SECURITY.md</a>.</p>
+</section>
+
+<section id="tests">
+  <h2>How it is tested</h2>
+  <p class="sub">35 tests, no test framework installed — <code>node --test</code> is built in, like the database.</p>
+  <p>Only the TypeSafe API is faked, because it is external and billed. SQLite, the MCP protocol and process contention all run for real. Every behaviour is checked twice: once against the SQLite store and once against the memory fallback.</p>
+  <p>Passing tests prove nothing until they have been seen to fail, so each was re-run against a deliberately broken copy of the code:</p>
+  <div class="table-scroll">
+  <table>
+    <caption>Break the code this way, and a test must notice</caption>
+    <tr><th>Mutation</th><th>Caught</th></tr>
+    <tr><td>Cache key stops ignoring key order</td><td>yes</td></tr>
+    <tr><td>Cache key includes the caller's question ids</td><td>yes</td></tr>
+    <tr><td>Score levels get sorted, losing their order</td><td>yes</td></tr>
+    <tr><td>Answers returned without remapping to the caller's ids</td><td>yes</td></tr>
+    <tr><td>TTL never expires an entry</td><td>yes</td></tr>
+    <tr><td>Failed calls get cached</td><td>yes</td></tr>
+    <tr><td>A moved model alias goes undetected</td><td>yes</td></tr>
+    <tr><td>Eviction by age instead of by use</td><td>yes</td></tr>
+    <tr><td><code>busy_timeout</code> removed</td><td>yes</td></tr>
+    <tr><td>Question validation skipped</td><td>yes</td></tr>
+  </table>
+  </div>
+  <p>Beyond that, the bridge was driven from a real Claude Code session end to end — which is how the question-id bug was found, and something no unit test had thought to ask.</p>
+</section>
+
+<section id="status">
+  <h2>Built, declined, left</h2>
+
+  <h3>Done</h3>
+  <ul class="done">
+    <li><strong>Answers are cached.</strong> Keyed on state, questions and model — never on the ids. A hit costs nothing and returns in 0.08 ms.</li>
+    <li><strong>Usage is kept.</strong> Every call records tokens, cost, latency and outcome. <code>jev_usage</code> reports it; so does <code>--stats</code>.</li>
+    <li><strong>Output is typed.</strong> <code>jev_ask</code> declares an <code>outputSchema</code> and returns <code>structuredContent</code>, so the client gets data rather than a JSON string to re-read.</li>
+    <li><strong>A moved alias invalidates itself.</strong> Each entry records the model that answered it; when <code>jev-latest</code> starts resolving elsewhere, old entries stop being served instead of silently outliving the release.</li>
+    <li><strong>It survives an old Node.</strong> Machines with nvm often carry several Node versions, and anything before 22.5 lacks <code>node:sqlite</code>. The README tells you to register an absolute interpreter path; if the bridge still meets an old one, it falls back to an in-memory cache instead of failing to start.</li>
+  </ul>
+
+  <h3>Declined</h3>
+  <p>Swapping in the official SDK would inherit maintained retries and types, but costs the zero-dependency property — which is what lets a bare <code>node server.mjs</code> start with no install step and nothing to rot. A <code>jev_decide</code> tool that bakes confidence thresholds into the bridge stays unbuilt for a stronger reason: TypeSafe's own guidance is to keep raw judgments reusable and policy in your code. Bake a threshold in and every caller inherits a decision they cannot see — exactly what case 6 above keeps separate.</p>
+
+  <h3>Left</h3>
+  <ul class="todo">
+    <li><strong>Normalising the question text.</strong> Case and whitespace differences still miss. Real rephrasing should miss — but <code>"Does this convey urgency?"</code> and <code>"does this convey urgency? "</code> need not.</li>
+    <li><strong>A shared rate-limit budget.</strong> Each process retries on its own today. At your volume that is invisible; at a thousand calls a minute it would not be.</li>
+    <li><strong>Pruning the usage log.</strong> The cache evicts itself; the log grows forever. At roughly 80 bytes a call that is years away, but it has no ceiling.</li>
+  </ul>
+</section>
+
+<section id="using">
+  <h2>Working with it</h2>
+<pre><span class="c"># is the credential still good? bypasses the cache and calls the API</span>
+node src/server.mjs --selftest
+
+<span class="c"># what has it cost, over the last 7 days?</span>
+node src/server.mjs --stats 7
+
+<span class="c"># throw away stored answers, keep the usage history</span>
+node src/server.mjs --clear-cache
+
+<span class="c"># the tests</span>
+npm test
+
+<span class="c"># rotate the key — one file, every project follows</span>
+printf 'TYPESAFE_API_KEY=%s\n' "$NEW" &gt; ~/.jev-bridge/.env
+chmod 600 ~/.jev-bridge/.env</pre>
+  <p>Three tools reach Claude Code: <code>jev_ask</code>, <code>jev_usage</code> and <code>jev_models</code>. A session already running when the bridge changed fixed its tool list at startup and will not see them — start a new one.</p>
+  <p class="note">Knobs, all optional: <code>JEV_BRIDGE_HOME</code> (~/.jev-bridge), <code>TYPESAFE_CACHE_TTL_DAYS</code> (7), <code>TYPESAFE_CACHE_MAX</code> (20000), <code>TYPESAFE_DB</code>, <code>TYPESAFE_MODEL</code>, <code>TYPESAFE_USD_PER_MTOK</code> (0.042), <code>TYPESAFE_API_URL</code>, <code>TYPESAFE_TIMEOUT_MS</code>.</p>
+</section>
+
+<footer>
+  <p>jev-bridge 0.1.0 · MIT © 2026 Hoang Viet Le · not affiliated with TypeSafe AI. The plugin it complements: 6 files, 14,214 bytes, none of it executable. The bridge: <code>server.mjs</code> (571 lines), <code>store.mjs</code> (289) and <code>server.test.mjs</code> (380) — no dependencies, Node built-ins only, SQLite included. Contract from <a href="https://docs.typesafe.ai/api">docs.typesafe.ai/api</a>; the implementation is ours, so nothing auto-updates if the contract moves. <code>--selftest</code> is how that drift surfaces as a failure instead of a puzzle.</p>
+</footer>
+
+</div>
+
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'base',
+  themeVariables: {
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: '13px',
+    background: '#FFFFFF', primaryColor: '#FFFFFF', primaryTextColor: '#16202E', primaryBorderColor: '#2540D9',
+    lineColor: '#5A6B80', textColor: '#16202E', secondaryColor: '#F8FAFC', tertiaryColor: '#F8FAFC',
+    clusterBkg: '#F8FAFC', clusterBorder: '#C9D2DD',
+    actorBkg: '#FFFFFF', actorBorder: '#2540D9', actorTextColor: '#16202E',
+    signalColor: '#16202E', signalTextColor: '#16202E',
+    labelBoxBkgColor: '#E5E9FB', labelBoxBorderColor: '#2540D9', labelTextColor: '#16202E',
+    loopTextColor: '#16202E', noteBkgColor: '#E5E9FB', noteBorderColor: '#2540D9', noteTextColor: '#1B2C9E',
+    sequenceNumberColor: '#FFFFFF'
+  },
+  flowchart: { curve: 'basis', padding: 14, nodeSpacing: 46, rankSpacing: 52 },
+  sequence: { actorMargin: 52, boxMargin: 10, mirrorActors: false, useMaxWidth: true }
+});
+
+const bars = document.querySelectorAll('.readout .fill');
+const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+requestAnimationFrame(() => {
+  setTimeout(() => bars.forEach((b, i) => {
+    const w = b.dataset.w + '%';
+    if (reduce) { b.style.width = w; return; }
+    setTimeout(() => { b.style.width = w; }, i * 110);
+  }), reduce ? 0 : 260);
+});
+</script>
+</body>
+</html>

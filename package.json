@@ -1,0 +1,50 @@
+{
+  "name": "jev-bridge",
+  "version": "0.1.0",
+  "description": "A zero-dependency MCP server for TypeSafe's Jev: calibrated, typed judgments for Claude Code and any MCP client, with a local answer cache and usage accounting.",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "jev-bridge": "src/server.mjs"
+  },
+  "exports": {
+    ".": "./src/server.mjs",
+    "./store": "./src/store.mjs"
+  },
+  "files": [
+    "src/",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "selftest": "node src/server.mjs --selftest",
+    "stats": "node src/server.mjs --stats"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "mcp-server",
+    "typesafe",
+    "jev",
+    "system-one",
+    "claude",
+    "claude-code",
+    "classification",
+    "llm"
+  ],
+  "author": "Hoang Viet Le",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lhviet/jev-bridge.git"
+  },
+  "homepage": "https://github.com/lhviet/jev-bridge#readme",
+  "bugs": {
+    "url": "https://github.com/lhviet/jev-bridge/issues"
+  }
+}

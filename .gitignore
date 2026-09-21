@@ -1,0 +1,14 @@
+# Secrets. A TypeSafe key must never be committed.
+.env
+.env.*
+!.env.example
+
+# The local answer cache and usage log.
+*.db
+*.db-wal
+*.db-shm
+
+node_modules/
+coverage/
+*.log
+.DS_Store
