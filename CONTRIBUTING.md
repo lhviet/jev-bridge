@@ -76,6 +76,18 @@ Each rewrites its report — [evidence/install.md](evidence/install.md) and
 answer no longer does what the text says. Both need `claude` and a TypeSafe
 key, and cost a few cents at most.
 
+The documentation also states numbers by hand: versions, line counts, test
+counts per file, the Node versions CI runs. Those drift, so CI checks them
+against the repository on every push:
+
+```bash
+npm run numbers    # no key needed, and nothing is written
+```
+
+If it fails it names the file and the figure to correct. When you add a test or
+a source file, that is usually the README's tree, `docs/architecture.md` and
+the tree in `docs/explainer.html`.
+
 ## Pull requests
 
 - Keep each pull request to one change.
