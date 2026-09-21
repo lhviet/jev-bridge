@@ -326,7 +326,7 @@ const md = [
   `| Node | ${process.version} |`,
   `| git | ${version('git', ['--version']).replace('git version ', '')} |`,
   `| Claude Code | ${version(CLAUDE, ['--version'])} |`,
-  `| Installed | \`${installed}\`, cloned from ${SOURCE_SHOWN} |`,
+  `| Installed | \`${installed.replaceAll('|', '\\|')}\`, cloned from ${SOURCE_SHOWN} |`, // a | would end the table cell
   '',
   '**How it was run.** A temporary directory stood in for a new machine: `~` below is its home directory, empty at the start, '
     + 'and `<clone>` is where the repository was cloned. Each command was read out of the README and run as a shell would. '
