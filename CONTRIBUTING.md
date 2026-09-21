@@ -45,6 +45,22 @@ The suite never calls the live API and never reads a real key: it sets
 `TYPESAFE_API_KEY`, `TYPESAFE_DB` and `JEV_BRIDGE_HOME` for every server it
 starts.
 
+## When you change what a client is told
+
+`src/catalog.mjs` holds the server instructions, the tool descriptions and
+schemas, the guide and the prompts: everything an agent reads before it
+decides what to do. A change there can change what Claude does, which no unit
+test sees. Re-record the sessions and read the report before opening a pull
+request:
+
+```bash
+npm run evidence   # needs `claude` and a TypeSafe key; costs well under a dollar
+```
+
+The report ([evidence/README.md](evidence/README.md)) says which checks passed.
+Keep every description and the instructions under 2 KB — Claude Code cuts
+them there — and put the rule that matters most first.
+
 ## Pull requests
 
 - Keep each pull request to one change.

@@ -1,0 +1,34 @@
+{
+  "scenario": "modern-review-workflow",
+  "trial": null,
+  "about": "MCP 2026-07-28, four tools in sequence: route a ticket, record the known truth against that exact call, then report cost and uncertain calls.",
+  "started": "2026-09-21T05:27:39.303Z",
+  "finished": "2026-09-21T05:28:00.555Z",
+  "exit_code": 0,
+  "model": "sonnet",
+  "env": {
+    "MCP_SDK_GENERATION": "v2",
+    "MCP_PROTOCOL_NEGOTIATION": "auto"
+  },
+  "command": [
+    "claude",
+    "-p",
+    "--model",
+    "sonnet",
+    "--strict-mcp-config",
+    "--mcp-config",
+    "<workdir>/modern-review-workflow/mcp.json",
+    "--allowedTools",
+    "mcp__jev",
+    "ListMcpResourcesTool",
+    "ReadMcpResourceTool",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--no-session-persistence",
+    "--max-budget-usd",
+    "1",
+    "Route this support ticket to billing, technical or sales: \"The API returns a 500 error every time I upload an invoice PDF.\" Then, whatever it picked: I already know the right team is technical, so record that as the truth for this exact call in the review log. Finally tell me what these judgments have cost so far and list any past calls it was unsure about."
+  ],
+  "stderr": null
+}

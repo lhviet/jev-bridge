@@ -1,0 +1,31 @@
+{
+  "scenario": "prompt-cost-report",
+  "trial": null,
+  "about": "/mcp__jev__cost_report 1 — Claude Code fetches the prompt with prompts/get, and the rendered prompt drives the usage and history tools.",
+  "started": "2026-09-21T05:28:00.557Z",
+  "finished": "2026-09-21T05:28:13.925Z",
+  "exit_code": 0,
+  "model": "sonnet",
+  "env": {},
+  "command": [
+    "claude",
+    "-p",
+    "--model",
+    "sonnet",
+    "--strict-mcp-config",
+    "--mcp-config",
+    "<workdir>/prompt-cost-report/mcp.json",
+    "--allowedTools",
+    "mcp__jev",
+    "ListMcpResourcesTool",
+    "ReadMcpResourceTool",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--no-session-persistence",
+    "--max-budget-usd",
+    "1",
+    "/mcp__jev__cost_report 1"
+  ],
+  "stderr": null
+}

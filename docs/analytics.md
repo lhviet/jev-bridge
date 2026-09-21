@@ -85,7 +85,7 @@ prunes; `calls` is lean and permanent. For a trend longer than a month, use
 | `status` | The HTTP status; `200` for success, `0` if no reply ever came |
 | `error` | Why it failed, if it did |
 | `latency_ms` | Time inside the bridge, from receiving the call to having the answer |
-| `attempts` | Tries it took; more than one means it waited out a 429 or 529 |
+| `attempts` | Tries it took; more than one means it was retried after a 408, 429 or 5xx, a timeout or a dropped connection |
 | `input_tokens`, `output_tokens` | Tokens billed; `0` for a cache hit |
 | `cost_usd` | What this call cost; `0` for a hit |
 | `question_count` | Questions in the call |

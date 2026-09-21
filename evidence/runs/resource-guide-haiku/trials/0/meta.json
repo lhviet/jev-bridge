@@ -1,0 +1,10 @@
+{
+  "scenario": "resource-guide-haiku",
+  "trial": 0,
+  "about": "The earlier recording of this exact prompt on Claude Haiku 4.5 with the same server code, made during the full run before the trials. Its wire log was recovered from the run's work directory; its transcript was overwritten by a later session and is not available.",
+  "started": "2026-09-21T05:16:41.116Z",
+  "finished": "2026-09-21T05:16:45.489Z",
+  "model": "haiku",
+  "env": {},
+  "note": "recovered wire log only"
+}

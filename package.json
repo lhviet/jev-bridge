@@ -22,7 +22,9 @@
     "selftest": "node src/server.mjs --selftest",
     "stats": "node src/server.mjs --stats",
     "ui": "node src/server.mjs --ui",
-    "history": "node src/server.mjs --history"
+    "history": "node src/server.mjs --history",
+    "evidence": "node evidence/run.mjs && node evidence/validate-wire.mjs && node evidence/report.mjs",
+    "evidence:report": "node evidence/report.mjs"
   },
   "engines": {
     "node": ">=18"

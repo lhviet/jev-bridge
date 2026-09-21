@@ -1,0 +1,34 @@
+{
+  "scenario": "modern-rerank",
+  "trial": null,
+  "about": "Claude Code negotiating MCP 2026-07-28: server/discover, per-request _meta, no initialize. Rerank four passages against a query.",
+  "started": "2026-09-21T05:27:11.140Z",
+  "finished": "2026-09-21T05:27:39.291Z",
+  "exit_code": 0,
+  "model": "sonnet",
+  "env": {
+    "MCP_SDK_GENERATION": "v2",
+    "MCP_PROTOCOL_NEGOTIATION": "auto"
+  },
+  "command": [
+    "claude",
+    "-p",
+    "--model",
+    "sonnet",
+    "--strict-mcp-config",
+    "--mcp-config",
+    "<workdir>/modern-rerank/mcp.json",
+    "--allowedTools",
+    "mcp__jev",
+    "ListMcpResourcesTool",
+    "ReadMcpResourceTool",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--no-session-persistence",
+    "--max-budget-usd",
+    "1",
+    "My search for \"how do I rotate the API key without downtime?\" returned these passages. Rank them by how well they actually answer the question, with a calibrated score for each.\na) \"API keys are created in the console under Settings > Keys.\"\nb) \"To rotate without downtime, create a second key, deploy it everywhere, then revoke the old one; both keys work during the overlap.\"\nc) \"Keys should be rotated every 90 days as a security best practice.\"\nd) \"Our uptime SLA is 99.95% for paid plans.\""
+  ],
+  "stderr": null
+}

@@ -1,0 +1,31 @@
+{
+  "scenario": "resource-guide-haiku",
+  "trial": 4,
+  "about": "Claude Haiku 4.5 with a looser prompt that never asks for Jev by name: does a small model still route the judgment through jev_ask?",
+  "started": "2026-09-21T05:23:54.916Z",
+  "finished": "2026-09-21T05:24:16.807Z",
+  "exit_code": 0,
+  "model": "haiku",
+  "env": {},
+  "command": [
+    "claude",
+    "-p",
+    "--model",
+    "haiku",
+    "--strict-mcp-config",
+    "--mcp-config",
+    "<workdir>/resource-guide-haiku-trial-4/mcp.json",
+    "--allowedTools",
+    "mcp__jev",
+    "ListMcpResourcesTool",
+    "ReadMcpResourceTool",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--no-session-persistence",
+    "--max-budget-usd",
+    "1",
+    "Read @jev:jev://guide, then use it to find the delivery date in: \"Ordered 3 Jan, dispatched 5 Jan, and it should reach you by 11 Jan. Returns close 25 Jan.\" Tell me which rule from the guide you followed."
+  ],
+  "stderr": null
+}
