@@ -10,7 +10,7 @@ Every step of the [README](../README.md#install)'s install guide, run as written
 | Node | v24.21.0 |
 | git | 2.53.0 |
 | Claude Code | 2.1.278 (Claude Code) |
-| Installed | `2db4bbe [security\|docs] Harden key handling and data files; Quick start; install guide and examples run as evidence (#2)`, cloned from https://github.com/lhviet/jev-bridge.git |
+| Installed | `2fb5ac8 [release] jev-bridge 0.2.0 (#6)`, cloned from https://github.com/lhviet/jev-bridge.git |
 
 **How it was run.** A temporary directory stood in for a new machine: `~` below is its home directory, empty at the start, and `<clone>` is where the repository was cloned. Each command was read out of the README and run as a shell would. The key was written where Option A puts it, and is shown as `<key>`. The Claude Code session is the one step with this machine's real home directory, since that is where Claude Code keeps its login. It was given only the `jev` entry that `claude mcp add` wrote (`--strict-mcp-config`), with hooks and skills turned off, and the server kept its data in the sandbox (`JEV_BRIDGE_HOME`). In an interactive session Claude Code asks before a tool runs; `--allowedTools mcp__jev` answers yes in advance. The sandbox, and the copy of the key in it, were deleted at the end.
 
@@ -63,15 +63,15 @@ store: sqlite at ~/.jev-bridge/jev.db
       "choice": "billing",
       "confidence": 0.8,
       "probabilities": {
-        "sales": 0,
+        "billing": 0.87,
         "technical": 0.13,
-        "billing": 0.87
+        "sales": 0
       }
     },
     "frustration": {
       "type": "score",
-      "score": 1.05,
-      "confidence": 0.93,
+      "score": 1.03,
+      "confidence": 0.95,
       "legend": {
         "0": "Calm",
         "1": "Frustrated",
@@ -79,8 +79,8 @@ store: sqlite at ~/.jev-bridge/jev.db
       },
       "probabilities": {
         "0": 0,
-        "1": 0.95,
-        "2": 0.05
+        "1": 0.97,
+        "2": 0.03
       }
     }
   },
@@ -90,11 +90,11 @@ store: sqlite at ~/.jev-bridge/jev.db
   },
   "bridge": {
     "cached": false,
-    "latency_ms": 178.14,
+    "latency_ms": 127.2,
     "cost_usd": 0.000016758,
     "attempts": 1,
-    "request_id": "req_01a0c429519e79fdae20fb7c1751e575",
-    "call_id": "a2ad07ae-1"
+    "request_id": "req_01a0c4360d58701e9f34ac21fb21083d",
+    "call_id": "5eae502d-1"
   }
 }
 $ claude mcp list
@@ -135,7 +135,7 @@ Ran: git clone https://github.com/lhviet/jev-bridge.git jev-bridge
 ```text
 Cloning into 'jev-bridge'...
 $ git log -1 --oneline
-2db4bbe [security|docs] Harden key handling and data files; Quick start; install guide and examples run as evidence (#2)
+2fb5ac8 [release] jev-bridge 0.2.0 (#6)
 ```
 
 - ✔ the clone succeeded
@@ -158,7 +158,7 @@ $ npm test
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 6344.64375
+ℹ duration_ms 6540.715125
 ```
 
 - ✔ npm test exits 0
@@ -193,9 +193,9 @@ Ran: the same, with the key in place of your-key-here
 ```text
 $ ls -la ~/.jev-bridge
 total 8
-drwx------@ 3 <user>  staff   96 Sep 21 06:30 .
-drwxr-xr-x@ 4 <user>  staff  128 Sep 21 06:30 ..
--rw-------@ 1 <user>  staff  126 Sep 21 06:30 .env
+drwx------@ 3 <user>  staff   96 Sep 21 06:44 .
+drwxr-xr-x@ 4 <user>  staff  128 Sep 21 06:44 ..
+-rw-------@ 1 <user>  staff  126 Sep 21 06:44 .env
 ```
 
 - ✔ ~/.jev-bridge is mode 700
@@ -254,17 +254,17 @@ store: sqlite at ~/.jev-bridge/jev.db
     "department": {
       "type": "choice",
       "choice": "billing",
-      "confidence": 0.78,
+      "confidence": 0.84,
       "probabilities": {
         "sales": 0,
-        "billing": 0.85,
-        "technical": 0.15
+        "technical": 0.11,
+        "billing": 0.89
       }
     },
     "frustration": {
       "type": "score",
-      "score": 1.05,
-      "confidence": 0.92,
+      "score": 1.04,
+      "confidence": 0.94,
       "legend": {
         "0": "Calm",
         "1": "Frustrated",
@@ -272,8 +272,8 @@ store: sqlite at ~/.jev-bridge/jev.db
       },
       "probabilities": {
         "0": 0,
-        "1": 0.95,
-        "2": 0.05
+        "1": 0.96,
+        "2": 0.04
       }
     }
   },
@@ -283,11 +283,11 @@ store: sqlite at ~/.jev-bridge/jev.db
   },
   "bridge": {
     "cached": false,
-    "latency_ms": 196.93,
+    "latency_ms": 135.94,
     "cost_usd": 0.000016758,
     "attempts": 1,
-    "request_id": "req_01a0c42974757a1c81abf74fb4bae767",
-    "call_id": "cf5e121a-1"
+    "request_id": "req_01a0c436311f7b43b8e7b17928a210ce",
+    "call_id": "ea2c7b27-1"
   }
 }
 ```
@@ -342,67 +342,61 @@ tools Claude called: ToolSearch, ReadMcpResourceTool, mcp__jev__jev_ask
   "questions": {
     "urgent": {
       "type": "noul",
-      "instructions": "Does the customer in `message` convey that the problem needs prompt attention (urgent)?",
+      "instructions": "Is `message` urgent, meaning the sender needs a prompt response because they are blocked or losing money or time?"
+    },
+    "team": {
+      "type": "choice",
+      "instructions": "Which team should handle `message`?",
       "criteria": {
-        "true": "The customer signals urgency, distress, or ongoing harm that needs a fast response",
-        "false": "The customer is asking a routine question or reporting something with no time pressure"
+        "billing": "Payments, payouts, invoicing, refunds, charges",
+        "technical": "Bugs, outages, integrations, API or product errors",
+        "sales": "Pricing, plans, upgrades, new purchases",
+        "none": "Does not fit any of the other teams"
       }
     },
     "severity": {
       "type": "score",
-      "instructions": "How severe is the problem described in `message` for the customer?",
+      "instructions": "How severe is the problem described in `message`?",
       "criteria": [
-        "Cosmetic or informational, no impact on the customer",
-        "Degraded experience, the customer has a workaround",
-        "Blocked, the customer cannot complete an important task and has no workaround",
-        "Money is being lost, delayed, or withheld from the customer, or data is being lost"
+        "Cosmetic or a question, no impact",
+        "Degraded, has a workaround",
+        "Blocked, no workaround",
+        "Money or data being lost or withheld"
       ]
-    },
-    "team": {
-      "type": "choice",
-      "instructions": "Which team should handle the issue in `message`?",
-      "criteria": {
-        "payments": "Payouts, transfers, bank accounts, transaction failures, settlement",
-        "billing": "Invoices, subscription charges, refunds, plan pricing",
-        "technical": "Bugs, outages, API or integration problems unrelated to money movement",
-        "account": "Login, verification, identity checks, account settings",
-        "sales": "Pricing questions, upgrades, new purchases",
-        "none": "The message does not fit any of the above teams"
-      }
     }
   }
 }
 
 ── what Jev answered ──
-urgent    noul    ███████████████████   0.95
-severity  score   ███████████████████▉  2.99 of 3   confidence 0.99
-team      choice  payments   confidence 1.00
-            payments   ████████████████████  1.00
-            account    ·                     0.00
-            technical  ·                     0.00
+urgent    noul    ██████████████████▊   0.94
+team      choice  billing   confidence 0.99
+            billing    ███████████████████▊  0.99
+            technical  ▎                     0.01
             none       ·                     0.00
             sales      ·                     0.00
-            billing    ·                     0.00
-jev-1.13.0 · 211.73 ms · $0.0000253 · cached: false
+severity  score   ███████████████████▉  2.99 of 3   confidence 0.99
+jev-1.13.0 · 199.87 ms · $0.0000205 · cached: false
 
 ── Claude's reply ──
-**Verdict: urgent, route to the payments team.**
+**Verdict: urgent, route to Billing.**
 
-Jev's answers (call `219176e9-1`, model `jev-1.13.0`):
+Jev's answers (call `878fbb98-1`, model `jev-1.13.0`):
 
-| Question | Answer | How sure |
+| Question | Answer | Certainty |
 |---|---|---|
-| Urgent? | P(yes) = **0.95** | High |
-| Severity (0–3 scale) | **2.99**, the top level: money delayed or withheld | Confidence 0.99 (99% on level 3) |
-| Team | **payments** | Confidence 1.0 (the other options got about 0) |
+| Urgent? | P(yes) = **0.94** | High |
+| Team | **billing** | 0.99 confidence. Technical got 0.01, and sales and none got 0. |
+| Severity | **2.99** on a 0–3 scale, at the "money being lost or withheld" level | 0.99 confidence |
 
-Payouts that have failed for three days means the customer's money is stuck. Jev rated the urgency very high and had no doubt about the team.
+- **Urgency:** The customer has gone three days without payouts, so money is being withheld. Jev put that level at 0.99.
+- **Routing:** Jev treats this as a payments problem, so Billing owns it. Technical is a distant second at 0.01. If Billing finds a platform or integration fault behind the failures, they can hand it to Technical.
+- **Thresholds:** I didn't set any cutoffs myself. These numbers are well past any reasonable auto-route or auto-escalate threshold, so a person doesn't need to review this one before routing.
 
-You didn't give me your team list, so I made up the options: payments, billing, technical, account, sales and none. If your real queues differ, tell me the names and I'll re-run it. Also, 0.95 is well above any sensible cutoff (say 0.8), so I'd escalate without a human check.
+I sent only the message text. The guide's example includes a plan tier, but I left it out because it wasn't in your input, and a plan tier could matter for priority.
 
-Once you know whether the routing was right, I can record it with `jev_review` using the call ID above, so `jev_history` can track accuracy.
+I haven't recorded a review with `jev_review`. Once Billing confirms the routing and priority were right, I can log it against `878fbb98-1`.
 
-4 turns · 17.1 s · $0.0652 of Claude
+4 turns · 13.9 s · $0.0607 of Claude
 ```
 
 - ✔ the session exits 0
@@ -427,19 +421,19 @@ $ node src/server.mjs --history 7
   "cache_hits": 0,
   "hit_rate": 0,
   "errors": 0,
-  "input_tokens": 1001,
-  "output_tokens": 161,
-  "cost_usd": 0.000042042,
+  "input_tokens": 886,
+  "output_tokens": 148,
+  "cost_usd": 0.000037212,
   "saved_input_tokens": 0,
   "saved_usd": 0,
-  "avg_live_latency_ms": 204,
+  "avg_live_latency_ms": 168,
   "by_day": [
     {
       "day": "2026-09-21",
       "calls": 2,
       "cache_hits": 0,
-      "input_tokens": 1001,
-      "cost_usd": 0.000042042
+      "input_tokens": 886,
+      "cost_usd": 0.000037212
     }
   ],
   "models": [
@@ -457,8 +451,8 @@ $ node src/server.mjs --history 7
   "store": "sqlite"
 }
 $ node src/server.mjs --history 7   # the calls, one per line
-219176e9-1  claude-code        live    status 200
-cf5e121a-1  —                  live    status 200
+878fbb98-1  claude-code        live    status 200
+ea2c7b27-1  —                  live    status 200
 ```
 
 - ✔ both live calls were recorded: --selftest and the session
@@ -482,7 +476,7 @@ README: [Other MCP clients](../README.md#other-mcp-clients)
 Ran: the command and args from that JSON, launched over stdio: initialize, then tools/list
 
 ```text
-serverInfo: {"name":"jev-bridge","title":"Jev (TypeSafe System One)","version":"0.1.0","description":"Calibrated, typed judgments from TypeSafe's Jev, with a local answer cache, cost accounting and a reviewable call history.","websiteUrl":"https://github.com/lhviet/jev-bridge"}
+serverInfo: {"name":"jev-bridge","title":"Jev (TypeSafe System One)","version":"0.2.0","description":"Calibrated, typed judgments from TypeSafe's Jev, with a local answer cache, cost accounting and a reviewable call history.","websiteUrl":"https://github.com/lhviet/jev-bridge"}
 protocolVersion: 2025-11-25
 tools: jev_ask, jev_usage, jev_history, jev_review, jev_models
 ```
