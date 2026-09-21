@@ -143,6 +143,7 @@ const present = (r) => ({
   at: new Date(r.ts).toISOString(),
   ts: r.ts,
   model: r.resolved_model ?? r.requested_model,
+  client: r.client,
   cached: r.cached,
   status: r.status,
   latency_ms: r.latency_ms,
